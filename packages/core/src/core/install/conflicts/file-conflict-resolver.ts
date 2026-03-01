@@ -66,6 +66,13 @@ export interface OwnershipContext {
   previousOwnedPaths: Set<string>;
   /** Raw index records keyed by package name (needed for namespace index updates) */
   indexByPackage: Map<string, PackageIndexRecord>;
+  /**
+   * Paths written by the current package during earlier platform iterations in this
+   * install run. Used when installing to multiple platforms that share target paths
+   * (e.g. amp, kimi, replit all use .agents/skills/). Prevents later platforms from
+   * treating earlier writes as "exists-unowned" and incorrectly namespacing.
+   */
+  currentRunWrittenPaths?: Set<string>;
 }
 
 /** A resolved target path together with the content that will be written there */
@@ -478,6 +485,13 @@ export function classifyFileConflict(
 
   if (owner) {
     return { type: 'owned-by-other', owner };
+  }
+
+  // Paths written by earlier platform iterations this run are treated as owned by
+  // the current package — no conflict. Prevents duplicate namespaced files when
+  // amp, kimi, replit (etc.) all target .agents/skills/.
+  if (ownershipContext.currentRunWrittenPaths?.has(normalized)) {
+    return { type: 'none' };
   }
 
   // For the 'exists-unowned' classification we only report the type here;

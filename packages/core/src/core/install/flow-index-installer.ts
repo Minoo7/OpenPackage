@@ -13,7 +13,7 @@
  *   Command Layer -> install-flow.ts -> THIS FILE -> flow-based-installer.ts
  */
 
-import { join } from 'path';
+import { join, relative } from 'path';
 import { promises as fs } from 'fs';
 import {
   installPackageWithFlows,
@@ -31,7 +31,12 @@ import { exists } from '../../utils/fs.js';
 import type { Platform } from '../platforms.js';
 import type { InstallOptions } from '../../types/index.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
-import type { RelocatedFile } from './conflicts/file-conflict-resolver.js';
+import {
+  buildOwnershipContext,
+  type RelocatedFile,
+  type OwnershipContext
+} from './conflicts/file-conflict-resolver.js';
+import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import type { IndexWriteCollector } from './wave-resolver/index-write-collector.js';
 import { createContextFromFormat } from '../conversion-context/creation.js';
 import { detectFormatWithContextFromDirectory } from './helpers/format-detection.js';
@@ -183,6 +188,24 @@ export async function installPackageByIndexWithFlows(
     return source;
   };
 
+  // When installing to multiple platforms that share target paths (e.g. amp, kimi, replit
+  // all use .agents/skills/), build a shared ownership context and track paths written this
+  // run so later platforms don't treat earlier writes as "exists-unowned" and incorrectly
+  // namespace, producing duplicate files.
+  let effectiveOwnershipContext: OwnershipContext | undefined;
+  if (platforms.length > 1) {
+    const ctx = sharedOwnershipContext ?? await (async () => {
+      const wsRecord = await readWorkspaceIndex(cwd);
+      const packageEntry = wsRecord.index.packages?.[packageName];
+      const previousRecord = packageEntry?.files
+        ? { files: packageEntry.files }
+        : null;
+      return buildOwnershipContext(cwd, packageName, previousRecord);
+    })();
+    ctx.currentRunWrittenPaths = ctx.currentRunWrittenPaths ?? new Set();
+    effectiveOwnershipContext = ctx;
+  }
+
   // Execute flows for each platform
   for (const platform of platforms) {
     // Create conversion context from format or detect it using shared utility
@@ -212,8 +235,8 @@ export async function installPackageByIndexWithFlows(
       // Phase 4: Pass resource filtering info
       matchedPattern,
       prompt,
-      // Parallel install support
-      sharedOwnershipContext,
+      // Parallel install support; use shared context with currentRunWrittenPaths when multi-platform
+      sharedOwnershipContext: effectiveOwnershipContext ?? sharedOwnershipContext,
       indexWriteCollector
     };
 
@@ -221,8 +244,15 @@ export async function installPackageByIndexWithFlows(
       const result = await installPackageWithFlows(installContext, options, forceOverwrite ?? false);
 
       // Aggregate target paths + per-source mapping for workspace index
-      for (const absTarget of result.targetPaths ?? []) {
+      const pathsThisPlatform = result.targetPaths ?? [];
+      for (const absTarget of pathsThisPlatform) {
         allTargetPaths.add(absTarget);
+        // Track workspace-relative paths written this run so later platforms (e.g. kimi, replit
+        // after amp) don't treat them as exists-unowned and incorrectly namespace.
+        if (effectiveOwnershipContext?.currentRunWrittenPaths) {
+          const rel = relative(cwd, absTarget);
+          effectiveOwnershipContext.currentRunWrittenPaths.add(normalizePathForProcessing(rel));
+        }
       }
       // Merge file mappings with normalization
       for (const [source, targets] of Object.entries(result.fileMapping ?? {})) {

@@ -10,8 +10,8 @@
  */
 
 import { DIR_TO_TYPE, type ResourceTypeId } from './resource-registry.js';
-import { getMarkerFilename } from './resource-registry.js';
-import { buildMarkerBoundaries, deriveMarkerFullName, deriveResourceFullName } from './resource-namespace.js';
+import { getMarkerFilename, getResourceTypeDef } from './resource-registry.js';
+import { buildMarkerBoundaries, deriveMarkerFullName, deriveResourceFullName, getPathUnderCategory } from './resource-namespace.js';
 import { normalizeType, toPluralKey } from './resource-registry.js';
 
 export interface ClassifiedResource {
@@ -133,6 +133,30 @@ export function classifyUntrackedPaths(
 
   // Step 3: Classify each path
   for (const file of files) {
+    const marker = getMarkerFilename(file.resourceType);
+
+    // Marker enforcement: for marker-based types (e.g. skill with SKILL.md),
+    // only classify files that are the marker itself or fall within a known
+    // marker boundary. Orphan files (no marker nearby) are excluded.
+    if (marker) {
+      const def = getResourceTypeDef(file.resourceType);
+      const categoryDir = def.dirName;
+      if (categoryDir) {
+        const pathUnder = getPathUnderCategory(file.path, categoryDir);
+        if (pathUnder !== null) {
+          const pathBasename = pathUnder.split('/').pop() ?? '';
+          const isMarkerFile = pathBasename === marker;
+          const boundaries = boundaryCache.get(file.resourceType) ?? [];
+          const withinBoundary = boundaries.some(
+            b => pathUnder === b || pathUnder.startsWith(b + '/')
+          );
+          if (!isMarkerFile && !withinBoundary) {
+            continue; // orphan file — skip
+          }
+        }
+      }
+    }
+
     const boundaries = boundaryCache.get(file.resourceType);
     const fullName = boundaries && boundaries.length > 0
       ? deriveMarkerFullName(file.path, file.resourceType, boundaries)

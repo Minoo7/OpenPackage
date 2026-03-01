@@ -159,4 +159,57 @@ import { classifySourceKeyBatch, classifyUntrackedPaths } from '../../../package
   console.log('✓ classifyUntrackedPaths — empty input');
 }
 
+// classifyUntrackedPaths — orphan skill files with no SKILL.md → excluded
+{
+  const files = [
+    { path: '.claude/skills/orphan-file.md', resourceType: 'skill' as const },
+    { path: '.claude/skills/some-dir/random.txt', resourceType: 'skill' as const },
+  ];
+  const result = classifyUntrackedPaths(files);
+  assert.equal(result.size, 0, 'Orphan skill files without SKILL.md should be excluded');
+  console.log('✓ classifyUntrackedPaths — orphan skill files excluded');
+}
+
+// classifyUntrackedPaths — mixed valid skills + orphan files → only valid classified
+{
+  const files = [
+    { path: '.claude/skills/my-skill/SKILL.md', resourceType: 'skill' as const },
+    { path: '.claude/skills/my-skill/readme.md', resourceType: 'skill' as const },
+    { path: '.claude/skills/orphan.txt', resourceType: 'skill' as const },
+    { path: '.claude/skills/stray-dir/junk.md', resourceType: 'skill' as const },
+  ];
+  const result = classifyUntrackedPaths(files);
+  assert.equal(result.size, 2, 'Only files within marker boundary should be classified');
+  assert.ok(result.has('.claude/skills/my-skill/SKILL.md'));
+  assert.ok(result.has('.claude/skills/my-skill/readme.md'));
+  assert.ok(!result.has('.claude/skills/orphan.txt'));
+  assert.ok(!result.has('.claude/skills/stray-dir/junk.md'));
+  console.log('✓ classifyUntrackedPaths — mixed valid + orphan skills');
+}
+
+// classifyUntrackedPaths — non-marker types (rules, agents) unaffected by marker enforcement
+{
+  const files = [
+    { path: '.cursor/rules/standalone-rule.mdc', resourceType: 'rule' as const },
+    { path: '.claude/agents/standalone-agent.md', resourceType: 'agent' as const },
+  ];
+  const result = classifyUntrackedPaths(files);
+  assert.equal(result.size, 2, 'Non-marker types should always be classified');
+  assert.ok(result.has('.cursor/rules/standalone-rule.mdc'));
+  assert.ok(result.has('.claude/agents/standalone-agent.md'));
+  console.log('✓ classifyUntrackedPaths — non-marker types unaffected');
+}
+
+// classifyUntrackedPaths — all-orphan skill directory → empty result
+{
+  const files = [
+    { path: '.claude/skills/no-marker/file1.md', resourceType: 'skill' as const },
+    { path: '.claude/skills/no-marker/file2.py', resourceType: 'skill' as const },
+    { path: '.claude/skills/another-orphan/stuff.txt', resourceType: 'skill' as const },
+  ];
+  const result = classifyUntrackedPaths(files);
+  assert.equal(result.size, 0, 'All-orphan skill directory should produce empty result');
+  console.log('✓ classifyUntrackedPaths — all-orphan skill directory');
+}
+
 console.log('\n✅ All resource-classifier tests passed');

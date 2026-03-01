@@ -268,7 +268,8 @@ export function mergeTrackedAndUntrackedResources(
     );
 
     for (const file of untrackedFiles.files) {
-      const cls = untrackedClassified.get(file.workspacePath)!;
+      const cls = untrackedClassified.get(file.workspacePath);
+      if (!cls) continue;
       const fullName = cls.fullName;
       const normalizedType = normalizeCategory(file.category);
 

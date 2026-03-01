@@ -347,4 +347,40 @@ async function createCursorPlatform(dir: string): Promise<void> {
   }
 }
 
+// Test: .DS_Store and Thumbs.db are filtered out of scan results
+{
+  const testDir = join(tmpdir(), `opkg-test-untracked-${Date.now()}-junk`);
+  await fs.mkdir(testDir, { recursive: true });
+
+  try {
+    await createClaudePlatform(testDir);
+
+    // Create platform files alongside junk files
+    await fs.mkdir(join(testDir, '.claude', 'rules'), { recursive: true });
+    await fs.writeFile(join(testDir, '.claude', 'rules', 'real-rule.md'), 'Real rule');
+    await fs.writeFile(join(testDir, '.claude', 'rules', '.DS_Store'), '');
+    await fs.writeFile(join(testDir, '.claude', 'rules', 'Thumbs.db'), '');
+
+    await fs.mkdir(join(testDir, '.claude', 'skills'), { recursive: true });
+    await fs.writeFile(join(testDir, '.claude', 'skills', '.DS_Store'), '');
+
+    await createWorkspaceIndex(testDir, { packages: {} });
+
+    const result = await scanUntrackedFiles(testDir);
+
+    // Only real-rule.md should appear; .DS_Store and Thumbs.db must be filtered
+    const hasDSStore = result.files.some(f => f.workspacePath.includes('.DS_Store'));
+    const hasThumbsDb = result.files.some(f => f.workspacePath.includes('Thumbs.db'));
+    const hasRealRule = result.files.some(f => f.workspacePath.includes('real-rule.md'));
+
+    assert.ok(!hasDSStore, '.DS_Store should be filtered out');
+    assert.ok(!hasThumbsDb, 'Thumbs.db should be filtered out');
+    assert.ok(hasRealRule, 'Real rule file should still appear');
+
+    console.log('✓ .DS_Store and Thumbs.db are filtered out of scan results');
+  } finally {
+    await fs.rm(testDir, { recursive: true, force: true });
+  }
+}
+
 console.log('\n✅ All untracked files scanner tests passed');

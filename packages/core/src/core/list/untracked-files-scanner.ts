@@ -9,10 +9,11 @@
  * This prevents unbounded walks when workspaceRoot is ~ (home directory).
  */
 
-import { join } from 'path';
+import { basename, join } from 'path';
 import { homedir } from 'os';
 import fg from 'fast-glob';
 import { minimatch } from 'minimatch';
+import { isJunk } from 'junk';
 import type { Platform } from '../platforms.js';
 import { getDetectedPlatforms, getPlatformDefinition } from '../platforms.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
@@ -468,6 +469,9 @@ function addMatchToMap(
   patterns: PatternInfo[],
   workspaceRoot: string
 ): void {
+  const filename = basename(relativePath);
+  if (isJunk(filename)) return;
+
   const absolutePath = join(workspaceRoot, relativePath);
   const normalizedPath = normalizePathForProcessing(absolutePath);
 

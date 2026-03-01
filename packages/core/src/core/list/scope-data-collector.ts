@@ -8,7 +8,7 @@ import type { UntrackedScanResult } from './untracked-files-scanner.js';
 import { detectEntityType, getEntityDisplayName } from '../../utils/entity-detector.js';
 import { formatPathForDisplay } from '../../utils/formatters.js';
 import { resolveDeclaredPath } from '../../utils/path-resolution.js';
-import { deriveResourceFullName } from '../resources/resource-namespace.js';
+import { classifyUntrackedPaths } from '../resources/resource-classifier.js';
 import { RESOURCE_TYPE_ORDER_PLURAL, normalizeType, toPluralKey } from '../resources/resource-registry.js';
 import type { EnhancedFileMapping, EnhancedResourceInfo, EnhancedResourceGroup, ResourceScope } from './list-tree-renderer.js';
 
@@ -252,9 +252,16 @@ export function mergeTrackedAndUntrackedResources(
   tree.forEach(collectFromNode);
 
   if (untrackedFiles && untrackedFiles.files.length > 0) {
+    const untrackedClassified = classifyUntrackedPaths(
+      untrackedFiles.files.map(f => ({
+        path: f.workspacePath,
+        resourceType: normalizeType(f.category),
+      }))
+    );
+
     for (const file of untrackedFiles.files) {
-      const singularType = normalizeType(file.category);
-      const fullName = deriveResourceFullName(file.workspacePath, singularType);
+      const cls = untrackedClassified.get(file.workspacePath)!;
+      const fullName = cls.fullName;
       const normalizedType = normalizeCategory(file.category);
 
       if (!typeMap.has(normalizedType)) {

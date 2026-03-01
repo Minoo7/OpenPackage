@@ -16,9 +16,7 @@ import { getWorkspaceIndexPath } from '../../utils/workspace-index-yml.js';
 import { isPlatformId, getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { normalizePlatforms } from '../platform/platform-mapper.js';
 import { DIR_TO_TYPE, RESOURCE_TYPE_ORDER, toPluralKey, type ResourceTypeId } from '../resources/resource-registry.js';
-import { classifySourceKey } from '../resources/source-key-classifier.js';
-import { deriveResourceFullName } from '../resources/resource-namespace.js';
-export { classifySourceKey } from '../resources/source-key-classifier.js';
+import { classifySourceKeyBatch } from '../resources/resource-classifier.js';
 
 export type PackageSyncState = 'synced' | 'partial' | 'missing';
 
@@ -224,18 +222,20 @@ function extractPlatformFromPath(targetPath: string, targetDir: string): string 
  * For other types, each source key maps to one resource.
  */
 export function groupFilesIntoResources(fileList: ListFileMapping[]): ListResourceGroup[] {
-  // First pass: classify each file and group by resource identity
+  // Batch-classify all source keys (handles marker boundaries internally)
+  const classified = classifySourceKeyBatch(fileList.map(f => f.source));
+
+  // First pass: group files by resource identity
   const resourceMap = new Map<string, ListResourceInfo>();
 
   for (const file of fileList) {
-    const { resourceType } = classifySourceKey(file.source);
-    const fullName = deriveResourceFullName(file.source, resourceType);
-    const key = fullName;
+    const cls = classified.get(file.source)!;
+    const key = cls.fullName;
 
     if (!resourceMap.has(key)) {
       resourceMap.set(key, {
-        name: fullName,
-        resourceType,
+        name: cls.fullName,
+        resourceType: cls.resourceType,
         files: []
       });
     }

@@ -9,11 +9,10 @@
  */
 
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
-import { classifySourceKey } from './source-key-classifier.js';
 import { getTargetPath } from '../../utils/workspace-index-helpers.js';
 import { scanUntrackedFiles } from '../list/untracked-files-scanner.js';
 import { normalizeType, RESOURCE_TYPE_ORDER } from './resource-registry.js';
-import { deriveUntrackedResourceName } from './resource-naming.js';
+import { classifySourceKeyBatch, classifyUntrackedPaths } from './resource-classifier.js';
 import type { ResourceScope } from './scope-traversal.js';
 
 export interface ResolvedResource {
@@ -67,8 +66,11 @@ export async function buildWorkspaceResources(
     const resourceMap = new Map<string, { sourceKeys: Set<string>; targetFiles: string[] }>();
     const allTargetFiles: string[] = [];
 
+    const classified = classifySourceKeyBatch(Object.keys(filesMapping));
+
     for (const [sourceKey, mappings] of Object.entries(filesMapping)) {
-      const { resourceType, resourceName } = classifySourceKey(sourceKey);
+      const cls = classified.get(sourceKey)!;
+      const { resourceType, resourceName } = cls;
 
       const key = resourceType === 'other'
         ? 'other::other'
@@ -115,10 +117,16 @@ export async function buildWorkspaceResources(
   const untrackedResult = await scanUntrackedFiles(targetDir);
   const untrackedMap = new Map<string, string[]>();
 
+  const untrackedClassified = classifyUntrackedPaths(
+    untrackedResult.files.map(f => ({
+      path: f.workspacePath,
+      resourceType: normalizeType(f.category),
+    }))
+  );
+
   for (const file of untrackedResult.files) {
-    const resourceType = normalizeType(file.category);
-    const resourceName = deriveUntrackedResourceName(file.workspacePath);
-    const key = `${resourceType}::${resourceName}`;
+    const cls = untrackedClassified.get(file.workspacePath)!;
+    const key = `${cls.resourceType}::${cls.resourceName}`;
 
     if (!untrackedMap.has(key)) {
       untrackedMap.set(key, []);

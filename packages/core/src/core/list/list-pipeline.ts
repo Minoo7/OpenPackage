@@ -16,10 +16,7 @@ import { getWorkspaceIndexPath } from '../../utils/workspace-index-yml.js';
 import { isPlatformId, getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { normalizePlatforms } from '../platform/platform-mapper.js';
 import { DIR_TO_TYPE, RESOURCE_TYPE_ORDER, toPluralKey, type ResourceTypeId } from '../resources/resource-registry.js';
-import { classifySourceKey } from '../resources/source-key-classifier.js';
-import { deriveResourceFullName, buildMarkerBoundaries, deriveMarkerFullName } from '../resources/resource-namespace.js';
-import { getMarkerFilename } from '../resources/resource-registry.js';
-export { classifySourceKey } from '../resources/source-key-classifier.js';
+import { classifySourceKeyBatch } from '../resources/resource-classifier.js';
 
 export type PackageSyncState = 'synced' | 'partial' | 'missing';
 
@@ -225,33 +222,20 @@ function extractPlatformFromPath(targetPath: string, targetDir: string): string 
  * For other types, each source key maps to one resource.
  */
 export function groupFilesIntoResources(fileList: ListFileMapping[]): ListResourceGroup[] {
-  // Pre-scan: build namespace boundaries for marker-based resource types
-  const markerBoundaryCache = new Map<string, string[]>();
-  for (const file of fileList) {
-    const { resourceType } = classifySourceKey(file.source);
-    if (!markerBoundaryCache.has(resourceType) && getMarkerFilename(resourceType)) {
-      const sources = fileList
-        .filter(f => classifySourceKey(f.source).resourceType === resourceType)
-        .map(f => f.source);
-      markerBoundaryCache.set(resourceType, buildMarkerBoundaries(sources, resourceType));
-    }
-  }
+  // Batch-classify all source keys (handles marker boundaries internally)
+  const classified = classifySourceKeyBatch(fileList.map(f => f.source));
 
-  // First pass: classify each file and group by resource identity
+  // First pass: group files by resource identity
   const resourceMap = new Map<string, ListResourceInfo>();
 
   for (const file of fileList) {
-    const { resourceType } = classifySourceKey(file.source);
-    const boundaries = markerBoundaryCache.get(resourceType);
-    const fullName = boundaries && boundaries.length > 0
-      ? deriveMarkerFullName(file.source, resourceType, boundaries)
-      : deriveResourceFullName(file.source, resourceType);
-    const key = fullName;
+    const cls = classified.get(file.source)!;
+    const key = cls.fullName;
 
     if (!resourceMap.has(key)) {
       resourceMap.set(key, {
-        name: fullName,
-        resourceType,
+        name: cls.fullName,
+        resourceType: cls.resourceType,
         files: []
       });
     }

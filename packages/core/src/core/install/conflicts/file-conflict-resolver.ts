@@ -141,7 +141,7 @@ export interface ConflictResolutionResult {
 // (moved from index-based-installer.ts)
 // ============================================================================
 
-async function collectFilesUnderDirectory(cwd: string, dirRelPath: string): Promise<string[]> {
+export async function collectFilesUnderDirectory(cwd: string, dirRelPath: string): Promise<string[]> {
   const directoryRel = ensureTrailingSlash(normalizePathForProcessing(dirRelPath));
   const absDir = join(cwd, directoryRel);
   if (!(await exists(absDir))) {
@@ -162,7 +162,7 @@ async function collectFilesUnderDirectory(cwd: string, dirRelPath: string): Prom
   return collected;
 }
 
-async function expandIndexToFilePaths(
+export async function expandIndexToFilePaths(
   cwd: string,
   index: PackageIndexRecord | null
 ): Promise<Set<string>> {

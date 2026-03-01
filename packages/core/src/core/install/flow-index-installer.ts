@@ -36,6 +36,7 @@ import {
   type RelocatedFile,
   type OwnershipContext
 } from './conflicts/file-conflict-resolver.js';
+import { removeStaleFiles } from './stale-file-cleanup.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import type { IndexWriteCollector } from './wave-resolver/index-write-collector.js';
 import { createContextFromFormat } from '../conversion-context/creation.js';
@@ -188,20 +189,29 @@ export async function installPackageByIndexWithFlows(
     return source;
   };
 
+  // Snapshot previous file mapping for stale file detection
+  let previousFiles: Record<string, (string | WorkspaceIndexFileMapping)[]> | null = null;
+  if (!options.dryRun) {
+    try {
+      const wsRecord = await readWorkspaceIndex(cwd);
+      const packageEntry = wsRecord.index.packages?.[packageName];
+      if (packageEntry?.files && Object.keys(packageEntry.files).length > 0) {
+        previousFiles = packageEntry.files;
+      }
+    } catch {
+      // Fresh workspace or read failure — no previous state to diff
+    }
+  }
+
   // When installing to multiple platforms that share target paths (e.g. amp, kimi, replit
   // all use .agents/skills/), build a shared ownership context and track paths written this
   // run so later platforms don't treat earlier writes as "exists-unowned" and incorrectly
   // namespace, producing duplicate files.
   let effectiveOwnershipContext: OwnershipContext | undefined;
   if (platforms.length > 1) {
-    const ctx = sharedOwnershipContext ?? await (async () => {
-      const wsRecord = await readWorkspaceIndex(cwd);
-      const packageEntry = wsRecord.index.packages?.[packageName];
-      const previousRecord = packageEntry?.files
-        ? { files: packageEntry.files }
-        : null;
-      return buildOwnershipContext(cwd, packageName, previousRecord);
-    })();
+    const ctx = sharedOwnershipContext ?? await buildOwnershipContext(
+      cwd, packageName, previousFiles ? { files: previousFiles } : null
+    );
     ctx.currentRunWrittenPaths = ctx.currentRunWrittenPaths ?? new Set();
     effectiveOwnershipContext = ctx;
   }
@@ -321,6 +331,30 @@ export async function installPackageByIndexWithFlows(
   // Log aggregated results using shared utilities
   logConflictMessages(allConflicts);
   logErrorMessages(allErrors);
+
+  // Remove stale files from previous installation
+  if (previousFiles && !options.dryRun) {
+    const staleResult = await removeStaleFiles({
+      cwd,
+      packageName,
+      previousFiles,
+      newFileMapping: fileMapping,
+      platforms,
+      dryRun: false,
+      matchedPattern,
+      ownershipContext: effectiveOwnershipContext ?? sharedOwnershipContext,
+    });
+
+    aggregatedResult.deleted += staleResult.deleted.length;
+    aggregatedResult.deletedFiles.push(...staleResult.deleted);
+
+    if (staleResult.deleted.length > 0 || staleResult.updated.length > 0) {
+      logger.info(
+        `Stale cleanup for ${packageName}: removed ${staleResult.deleted.length} files, ` +
+        `updated ${staleResult.updated.length} merged files`
+      );
+    }
+  }
 
   // Update workspace index if not dry-run
   if (!options.dryRun) {

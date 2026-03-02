@@ -94,6 +94,10 @@ export {
 // ============================================================================
 
 export { runSaveToSourcePipeline } from './core/save/save-to-source-pipeline.js';
+export {
+  runDirectSaveFlow,
+  type DirectSaveResult,
+} from './core/save/direct-save-flow.js';
 export { runSetPipeline } from './core/set/set-pipeline.js';
 
 // ============================================================================

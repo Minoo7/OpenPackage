@@ -158,7 +158,7 @@ program
 
 program
   .command('save')
-  .argument('<package-spec>', 'resource spec to save workspace changes to')
+  .argument('<resource-spec>', 'resource or package name to save workspace changes for')
   .description('Save workspace edits back to mutable package source')
   .option('-f, --force', 'auto-select newest when conflicts occur')
   .action(withErrorHandling(async (...args: any[]) => {

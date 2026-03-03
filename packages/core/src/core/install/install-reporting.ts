@@ -28,6 +28,8 @@ export interface InstallReportData {
   isDependencyInstall?: boolean;
   /** True when namespace conflict resolution was triggered */
   namespaced?: boolean;
+  /** Paths of files that were installed/updated under namespace conflict resolution */
+  namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
   /** When true, use compact note-based display for file lists (interactive mode) */
@@ -87,10 +89,14 @@ export function displayInstallationResults(data: InstallReportData, output: Outp
     errors,
     isDependencyInstall = true,
     namespaced,
+    namespacedFiles,
     relocatedFiles,
     interactive = false,
     replacedResources,
   } = data;
+
+  const namespacedSet = new Set(namespacedFiles ?? []);
+  const dim = (text: string) => `\x1b[2m${text}\x1b[0m`;
 
   // Check if installation actually succeeded
   const hadErrors = (errorCount && errorCount > 0) || false;
@@ -153,20 +159,22 @@ export function displayInstallationResults(data: InstallReportData, output: Outp
 
   // ── Installed files ───────────────────────────────────────────────────
   if (installedFiles && installedFiles.length > 0) {
-    const header = namespaced
-      ? `Installed files: ${installedFiles.length} (namespaced)`
-      : `Installed files: ${installedFiles.length}`;
+    const header = `Installed files: ${installedFiles.length}`;
     const sortedFiles = [...installedFiles].sort((a, b) => a.localeCompare(b));
-    renderFileList(sortedFiles.map(f => formatPathForDisplay(f)), header, output, interactive);
+    renderFileList(sortedFiles.map(f => {
+      const display = formatPathForDisplay(f);
+      return namespacedSet.has(f) ? `${display} ${dim('[namespaced]')}` : display;
+    }), header, output, interactive);
   }
 
   // ── Updated files ─────────────────────────────────────────────────────
   if (updatedFiles && updatedFiles.length > 0) {
-    const header = namespaced
-      ? `Updated files: ${updatedFiles.length} (namespaced)`
-      : `Updated files: ${updatedFiles.length}`;
+    const header = `Updated files: ${updatedFiles.length}`;
     const sortedFiles = [...updatedFiles].sort((a, b) => a.localeCompare(b));
-    renderFileList(sortedFiles.map(f => formatPathForDisplay(f)), header, output, interactive);
+    renderFileList(sortedFiles.map(f => {
+      const display = formatPathForDisplay(f);
+      return namespacedSet.has(f) ? `${display} ${dim('[namespaced]')}` : display;
+    }), header, output, interactive);
   }
 
   // ── Relocated files (namespace-triggered moves) ───────────────────────

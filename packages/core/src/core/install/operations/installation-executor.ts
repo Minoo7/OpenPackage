@@ -48,6 +48,8 @@ export interface InstallationPhasesResult {
   errors?: string[];
   /** True when namespace conflict resolution was triggered for any package */
   namespaced?: boolean;
+  /** Paths of files that were installed/updated under namespace conflict resolution */
+  namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
 }
@@ -70,6 +72,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
   const allDeletedFiles: string[] = [];
   const errors: string[] = [];
   let anyNamespaced = false;
+  const allNamespacedFiles: string[] = [];
   const allRelocatedFiles: RelocatedFile[] = [];
 
   for (const resolved of packages) {
@@ -110,6 +113,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       // Aggregate namespace metadata
       if (installResult.namespaced) {
         anyNamespaced = true;
+        allNamespacedFiles.push(...installResult.installedFiles, ...installResult.updatedFiles);
       }
       if (installResult.relocatedFiles && installResult.relocatedFiles.length > 0) {
         allRelocatedFiles.push(...installResult.relocatedFiles);
@@ -264,6 +268,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
     },
     totalOpenPackageFiles: totalInstalled + totalUpdated,
     namespaced: anyNamespaced || undefined,
+    namespacedFiles: allNamespacedFiles.length > 0 ? allNamespacedFiles : undefined,
     relocatedFiles: allRelocatedFiles.length > 0 ? allRelocatedFiles : undefined
   };
 }

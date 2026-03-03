@@ -156,6 +156,7 @@ export function mergeInstallReportData(
 
   const errorCount = list.reduce((sum, r) => sum + (r.errorCount ?? 0), 0);
   const errors = list.flatMap(r => r.errors ?? []);
+  const namespacedFiles = list.flatMap(r => r.namespacedFiles ?? []);
   const relocatedFiles = list.flatMap(r => r.relocatedFiles ?? []);
   const replacedResources = list.flatMap(r => r.replacedResources ?? []);
 
@@ -171,6 +172,7 @@ export function mergeInstallReportData(
     },
     errorCount,
     errors,
+    namespacedFiles: namespacedFiles.length > 0 ? namespacedFiles : undefined,
     relocatedFiles,
     replacedResources: replacedResources.length > 0 ? replacedResources : undefined,
     namespaced: list.some(r => r.namespaced),

@@ -20,6 +20,8 @@ export interface ExecutionResult {
   errors?: string[];
   /** True when namespace conflict resolution was triggered for any package */
   namespaced?: boolean;
+  /** Paths of files that were installed/updated under namespace conflict resolution */
+  namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
 }

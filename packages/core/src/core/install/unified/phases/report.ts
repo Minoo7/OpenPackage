@@ -32,6 +32,7 @@ export async function reportResultsPhase(
     errors: installResult.errors,
     isDependencyInstall,
     namespaced: installResult.namespaced,
+    namespacedFiles: installResult.namespacedFiles,
     relocatedFiles: installResult.relocatedFiles,
     interactive: ctx.execution.outputMode === 'rich',
     replacedResources: ctx._replacedResources,

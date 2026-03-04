@@ -9,7 +9,7 @@ export type { ResourceScope } from '../resources/scope-traversal.js';
  * Enhanced file mapping with status and scope
  */
 export interface EnhancedFileMapping extends ListFileMapping {
-  status: 'tracked' | 'untracked' | 'missing';
+  status: 'tracked' | 'modified' | 'clean' | 'outdated' | 'diverged' | 'untracked' | 'missing';
   scope: ResourceScope;
 }
 
@@ -20,7 +20,7 @@ export interface EnhancedResourceInfo {
   name: string;
   resourceType: string;
   files: EnhancedFileMapping[];
-  status: 'tracked' | 'partial' | 'untracked' | 'mixed';
+  status: 'tracked' | 'modified' | 'clean' | 'outdated' | 'diverged' | 'partial' | 'untracked' | 'missing' | 'mixed';
   scopes: Set<ResourceScope>;
   /** Package(s) this resource belongs to (tracked resources only) */
   packages?: Set<string>;
@@ -48,6 +48,10 @@ export interface TreeRenderConfig<TFile> {
   getResourceBadge?: (scopes?: Set<ResourceScope>) => string;
   /** Optional dimmed package labels shown under resource name, one line per package (vertical bar, no connector) */
   getResourcePackageLabels?: (packages?: Set<string>) => string[];
+  /** Optional status tag for file display (e.g., [modified]) */
+  getFileStatusTag?: (file: TFile) => string | undefined;
+  /** Optional status tag for resource display (e.g., [modified]) */
+  getResourceStatusTag?: (resource: EnhancedResourceInfo) => string | undefined;
 }
 
 // ANSI color codes
@@ -90,9 +94,11 @@ export function formatFileLabel<TFile>(
   const filePath = config.formatPath(file);
   const isMissing = config.isMissing(file);
   
-  return isMissing
-    ? `${dim(filePath)} ${red('[MISSING]')}`
-    : dim(filePath);
+  if (isMissing) {
+    return `${dim(filePath)} ${red('[MISSING]')}`;
+  }
+  const statusTag = config.getFileStatusTag?.(file);
+  return statusTag ? `${dim(filePath)} ${statusTag}` : dim(filePath);
 }
 
 /**
@@ -151,9 +157,10 @@ export function renderResource<TFile>(
   const childPrefix = getChildPrefix(prefix, isLast);
   const packagePrefix = hasFileBranches ? childPrefix + '│ ' : childPrefix;
 
-  // Resource name with optional badge
+  // Resource name with optional badge and status tag
   const badge = config.getResourceBadge?.(enhanced.scopes) ?? '';
-  out.message(`${prefix}${connector}${resource.name}${badge ? ' ' + badge : ''}`);
+  const statusTag = config.getResourceStatusTag?.(enhanced) ?? '';
+  out.message(`${prefix}${connector}${resource.name}${badge ? ' ' + badge : ''}${statusTag ? ' ' + statusTag : ''}`);
 
   // Package labels: dimmed (package) under resource name, one per package.
   // With -f: align (package) with resource name (no extra spacing); without -f: 2 spaces.

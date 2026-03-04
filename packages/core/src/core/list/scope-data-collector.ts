@@ -17,8 +17,8 @@ import type { EnhancedFileMapping, EnhancedResourceInfo, EnhancedResourceGroup, 
 // Types
 // ---------------------------------------------------------------------------
 
-type FileStatus = 'tracked' | 'untracked' | 'missing';
-type ResourceStatus = 'tracked' | 'partial' | 'untracked' | 'mixed';
+type FileStatus = 'tracked' | 'modified' | 'clean' | 'outdated' | 'diverged' | 'untracked' | 'missing';
+type ResourceStatus = 'tracked' | 'modified' | 'clean' | 'outdated' | 'diverged' | 'partial' | 'untracked' | 'missing' | 'mixed';
 
 export interface ScopeResult {
   headerName: string;
@@ -39,8 +39,7 @@ export interface HeaderInfo {
 interface ListPipelineOptions {
   files?: boolean;
   all?: boolean;
-  tracked?: boolean;
-  untracked?: boolean;
+  status?: boolean;
   platforms?: string[];
   remote?: boolean;
 }
@@ -68,8 +67,7 @@ async function runScopeList(
     const result = await runListPipeline(packageName, execContext, {
       includeFiles: options.files || !!packageName,
       all: options.all,
-      tracked: options.tracked,
-      untracked: options.untracked,
+      status: options.status,
       platforms: options.platforms
     });
 
@@ -201,12 +199,24 @@ function calculateResourceStatus(files: EnhancedFileMapping[]): ResourceStatus {
   if (files.length === 0) return 'untracked';
 
   const hasTracked = files.some(f => f.status === 'tracked');
+  const hasModified = files.some(f => f.status === 'modified');
+  const hasOutdated = files.some(f => f.status === 'outdated');
+  const hasDiverged = files.some(f => f.status === 'diverged');
+  const hasClean = files.some(f => f.status === 'clean');
   const hasUntracked = files.some(f => f.status === 'untracked');
   const hasMissing = files.some(f => f.status === 'missing');
 
-  if (hasUntracked && !hasTracked && !hasMissing) return 'untracked';
+  // Content-status-aware logic — priority: diverged > modified > outdated
+  if (hasDiverged) return 'diverged';
+  if (hasModified) return 'modified';
+  if (hasOutdated) return 'outdated';
+  if (hasClean && !hasTracked && !hasUntracked && !hasMissing) return 'clean';
+  if (hasClean && hasMissing && !hasUntracked) return 'partial';
+
+  if (hasUntracked && !hasTracked && !hasMissing && !hasClean) return 'untracked';
   if (hasTracked && !hasUntracked && !hasMissing) return 'tracked';
   if (hasTracked && hasMissing && !hasUntracked) return 'partial';
+  if (hasMissing && !hasTracked && !hasUntracked && !hasClean) return 'missing';
   return 'mixed';
 }
 
@@ -232,11 +242,23 @@ export function mergeTrackedAndUntrackedResources(
         for (const resource of group.resources) {
           const pkgName = node.report.name;
           if (!resourcesMap.has(resource.name)) {
-            const enhancedFiles: EnhancedFileMapping[] = resource.files.map(f => ({
-              ...f,
-              status: f.exists ? 'tracked' as FileStatus : 'missing' as FileStatus,
-              scope
-            }));
+            const enhancedFiles: EnhancedFileMapping[] = resource.files.map(f => {
+              let fileStatus: FileStatus;
+              if (!f.exists) {
+                fileStatus = 'missing';
+              } else if (f.contentStatus === 'modified') {
+                fileStatus = 'modified';
+              } else if (f.contentStatus === 'outdated') {
+                fileStatus = 'outdated';
+              } else if (f.contentStatus === 'diverged') {
+                fileStatus = 'diverged';
+              } else if (f.contentStatus === 'clean') {
+                fileStatus = 'clean';
+              } else {
+                fileStatus = 'tracked';
+              }
+              return { ...f, status: fileStatus, scope };
+            });
 
             resourcesMap.set(resource.name, {
               name: resource.name,

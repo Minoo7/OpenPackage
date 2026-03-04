@@ -319,6 +319,9 @@ export interface FlowResult {
   /** Merge strategy used (if applicable) */
   merge?: 'deep' | 'shallow' | 'replace' | 'composite';
 
+  /** Hash of the serialized content written to disk at install time */
+  contentHash?: string;
+
   /** Error if execution failed */
   error?: Error;
 

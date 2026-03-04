@@ -18,8 +18,7 @@ interface ListOptions {
   global?: boolean;
   project?: boolean;
   files?: boolean;
-  tracked?: boolean;
-  untracked?: boolean;
+  status?: boolean;
   platforms?: string[];
   deps?: boolean;
   json?: boolean;
@@ -50,6 +49,8 @@ function serializeDepsView(results: Array<{ scope: ResourceScope; result: any }>
       version: pkg.version,
       state: pkg.state ?? 'installed',
       dependencies: pkg.dependencies ?? [],
+      ...(pkg.modifiedCount !== undefined ? { modifiedCount: pkg.modifiedCount } : {}),
+      ...(pkg.isRegistryPackage !== undefined ? { isRegistryPackage: pkg.isRegistryPackage } : {}),
       ...(showFiles && pkg.files ? { files: pkg.files } : {}),
     })),
   }));
@@ -66,18 +67,6 @@ async function listCommand(
 ): Promise<CommandResult> {
   const programOpts = command.parent?.opts() || {};
 
-  if (options.tracked && options.untracked) {
-    throw new ValidationError('Cannot use --tracked and --untracked together.');
-  }
-
-  if (packageName && options.untracked) {
-    throw new ValidationError('Cannot use --untracked with a specific package.');
-  }
-
-  if (options.deps && options.untracked) {
-    throw new ValidationError('Cannot use --deps with --untracked.');
-  }
-
   if (options.project && options.global) {
     throw new ValidationError('Cannot use --project and --global together.');
   }
@@ -92,10 +81,9 @@ async function listCommand(
       showProject,
       showGlobal,
       pipelineOptions: {
-        files: options.files,
+        files: options.files || options.status, // status implies file-level detail
         all: true, // Always build full tree: deps view needs it for display, resources view needs it to collect from transitive deps
-        tracked: options.tracked,
-        untracked: options.untracked,
+        status: options.status,
         platforms: options.platforms
       },
       cwd: programOpts.cwd
@@ -158,7 +146,7 @@ async function listCommand(
           }
         : undefined;
     }
-    printDepsView(results, !!options.files, listHeaderInfo);
+    printDepsView(results, !!options.files, listHeaderInfo, undefined, !!options.status);
     return { success: true };
   }
 
@@ -167,7 +155,7 @@ async function listCommand(
 
   for (const { scope, result } of results) {
     // When listing a specific package, don't include untracked files
-    const untrackedData = packageName || options.tracked ? undefined : result.data.untrackedFiles;
+    const untrackedData = packageName ? undefined : result.data.untrackedFiles;
     const merged = mergeTrackedAndUntrackedResources(result.tree, untrackedData, scope);
     if (merged.length > 0) {
       scopedResources.push({ scope, groups: merged });
@@ -181,33 +169,13 @@ async function listCommand(
     }
     if (packageName) {
       console.log(dim(`No resources found for package '${packageName}'.`));
-    } else if (options.untracked) {
-      console.log(dim('No untracked resources found.'));
     } else {
       console.log(dim('No resources found.'));
     }
     return { success: true };
   }
 
-  let mergedResources = mergeResourcesAcrossScopes(scopedResources);
-
-  if (options.untracked) {
-    mergedResources = mergedResources
-      .map(group => ({
-        ...group,
-        resources: group.resources.filter(r => r.status === 'untracked')
-      }))
-      .filter(group => group.resources.length > 0);
-
-    if (mergedResources.length === 0) {
-      if (options.json) {
-        printJson([]);
-        return { success: true };
-      }
-      console.log(dim('No untracked resources found.'));
-      return { success: true };
-    }
-  }
+  const mergedResources = mergeResourcesAcrossScopes(scopedResources);
 
   if (options.json) {
     printJson(serializeResourcesView(mergedResources, !!options.files));
@@ -249,7 +217,7 @@ async function listCommand(
       : undefined;
   }
 
-  printResourcesView(mergedResources, !!options.files, listHeaderInfo);
+  printResourcesView(mergedResources, !!options.files, listHeaderInfo, undefined, !!options.status);
 
   return { success: true };
 }

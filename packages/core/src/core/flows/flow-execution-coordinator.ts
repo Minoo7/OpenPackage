@@ -280,7 +280,13 @@ async function processSourceFile(
     fileMapping.push({
       target: normalizedTargetRel,
       merge: flowResult.merge,
-      keys: flowResult.keys
+      keys: flowResult.keys,
+      hash: flowResult.contentHash
+    });
+  } else if (flowResult.contentHash) {
+    fileMapping.push({
+      target: normalizedTargetRel,
+      hash: flowResult.contentHash
     });
   } else {
     fileMapping.push(normalizedTargetRel);

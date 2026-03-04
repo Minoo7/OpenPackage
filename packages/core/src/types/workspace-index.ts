@@ -23,6 +23,12 @@ export interface WorkspaceIndexFileMapping {
    * Example: ["mcp.server1", "mcp.server2"]
    */
   keys?: string[];
+
+  /**
+   * xxhash3 of the content written at install time.
+   * Used by `list --status` to detect modifications without re-reading source files.
+   */
+  hash?: string;
 }
 
 export interface WorkspaceIndexPackage {

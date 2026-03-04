@@ -238,8 +238,7 @@ program
   .option('--project', 'list project scope only')
   .option('-d, --deps', 'show dependency tree (full tree including transitive dependencies)')
   .option('-f, --files', 'show individual file paths')
-  .option('-t, --tracked', 'show only tracked resources (skip untracked scan)')
-  .option('-u, --untracked', 'show only untracked resources')
+  .option('-s, --status', 'show content change status (modified/clean)')
   .option('-p, --platforms <platforms...>', 'filter by specific platforms (e.g., cursor, claude)')
   .option('--json', 'output results as JSON')
   .action(withErrorHandling(async (...args: any[]) => {

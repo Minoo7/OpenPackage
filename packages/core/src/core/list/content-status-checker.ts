@@ -14,7 +14,11 @@ import { calculateFileHash } from '../../utils/hash-utils.js';
 import { readTextFile, exists } from '../../utils/fs.js';
 import { getTargetPath, isComplexMapping, isMergedMapping } from '../../utils/workspace-index-helpers.js';
 import { extractContentByKeys } from '../save/save-merge-extractor.js';
+import { DefaultFlowExecutor } from '../flows/flow-executor.js';
+import { mapPlatformFileToUniversal } from '../platform/platform-mapper.js';
+import { MARKDOWN_EXTENSIONS } from '../../constants/index.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
+import type { FlowContext } from '../../types/flows.js';
 import { logger } from '../../utils/logger.js';
 
 export type ContentStatus = 'modified' | 'clean' | 'merged';
@@ -71,7 +75,8 @@ export async function checkContentStatus(
       } else {
         const status = await checkSimpleFileStatus(
           absTarget,
-          path.join(packageSourceRoot, sourceKey)
+          path.join(packageSourceRoot, sourceKey),
+          targetDir
         );
         results.set(key, status);
       }
@@ -83,27 +88,58 @@ export async function checkContentStatus(
 
 /**
  * Compare a simple (non-merged) file: hash workspace vs source.
+ *
+ * For markdown files deployed to a platform directory, runs the source through
+ * the flow executor's own loadSourceFile → serializeTargetContent path — the
+ * same code the installer uses.  This accounts for platform frontmatter merge,
+ * YAML re-serialization, and any future install-time transforms without
+ * maintaining a separate replica of the pipeline.
  */
 async function checkSimpleFileStatus(
   absWorkspacePath: string,
-  absSourcePath: string
+  absSourcePath: string,
+  targetDir: string
 ): Promise<ContentStatus> {
   try {
     if (!(await exists(absSourcePath))) {
-      // Source missing — can't compare, treat as clean (no info)
       return 'clean';
     }
 
-    const [workspaceContent, sourceContent] = await Promise.all([
-      readTextFile(absWorkspacePath),
-      readTextFile(absSourcePath)
-    ]);
+    const workspaceContent = await readTextFile(absWorkspacePath);
 
-    const [workspaceHash, sourceHash] = await Promise.all([
-      calculateFileHash(workspaceContent),
-      calculateFileHash(sourceContent)
-    ]);
+    // For markdown files, simulate the install pipeline so that expected
+    // serialization changes (YAML scalar style, platform frontmatter) don't
+    // produce false positives.
+    const ext = path.extname(absSourcePath).toLowerCase();
+    let sourceHash: string;
 
+    if (MARKDOWN_EXTENSIONS.has(ext)) {
+      try {
+        const platformInfo = mapPlatformFileToUniversal(absWorkspacePath, targetDir);
+        const executor = new DefaultFlowExecutor();
+        // Build a minimal FlowContext — loadSourceFile only needs platform + direction
+        const context: FlowContext = {
+          workspaceRoot: targetDir,
+          packageRoot: path.dirname(absSourcePath),
+          platform: platformInfo?.platform ?? 'claude',
+          packageName: '',
+          direction: 'install',
+          variables: {}
+        };
+        const loaded = await executor.loadSourceFile(absSourcePath, context);
+        const serialized = executor.serializeTargetContent(loaded.data, loaded.format);
+        sourceHash = await calculateFileHash(serialized);
+      } catch {
+        // Transform simulation failed — fall back to raw source comparison
+        const sourceContent = await readTextFile(absSourcePath);
+        sourceHash = await calculateFileHash(sourceContent);
+      }
+    } else {
+      const sourceContent = await readTextFile(absSourcePath);
+      sourceHash = await calculateFileHash(sourceContent);
+    }
+
+    const workspaceHash = await calculateFileHash(workspaceContent);
     return workspaceHash === sourceHash ? 'clean' : 'modified';
   } catch (error) {
     logger.debug(`Content check failed for ${absWorkspacePath}: ${error}`);

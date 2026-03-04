@@ -65,6 +65,8 @@ export interface IndexInstallResult {
   deletedFiles: string[];
   /** True when namespace conflict resolution was triggered for this package */
   namespaced?: boolean;
+  /** Paths of files that were actually installed under namespace conflict resolution */
+  namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
 }
@@ -130,6 +132,7 @@ export async function installPackageByIndexWithFlows(
   };
 
   const allTargetPaths = new Set<string>();
+  const namespacedTargetPaths: string[] = [];
   const allConflicts: string[] = [];
   const allErrors: string[] = [];
   const fileMapping: Record<string, (string | WorkspaceIndexFileMapping)[]> = {};
@@ -305,7 +308,7 @@ export async function installPackageByIndexWithFlows(
 
       // Propagate namespace metadata from the strategy result
       if (result.namespaced) {
-        aggregatedResult.namespaced = true;
+        namespacedTargetPaths.push(...pathsThisPlatform);
       }
       if (result.relocatedFiles && result.relocatedFiles.length > 0) {
         if (!aggregatedResult.relocatedFiles) {
@@ -392,6 +395,10 @@ export async function installPackageByIndexWithFlows(
   // Set result files
   aggregatedResult.files = Array.from(allTargetPaths);
   aggregatedResult.installedFiles = Array.from(allTargetPaths);
+  if (namespacedTargetPaths.length > 0) {
+    aggregatedResult.namespaced = true;
+    aggregatedResult.namespacedFiles = namespacedTargetPaths;
+  }
 
   return aggregatedResult;
 }

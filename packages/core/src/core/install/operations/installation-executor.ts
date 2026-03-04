@@ -71,7 +71,6 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
   const allUpdatedFiles: string[] = [];
   const allDeletedFiles: string[] = [];
   const errors: string[] = [];
-  let anyNamespaced = false;
   const allNamespacedFiles: string[] = [];
   const allRelocatedFiles: RelocatedFile[] = [];
 
@@ -111,11 +110,10 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       allDeletedFiles.push(...installResult.deletedFiles);
 
       // Aggregate namespace metadata
-      if (installResult.namespaced) {
-        anyNamespaced = true;
-        allNamespacedFiles.push(...installResult.installedFiles, ...installResult.updatedFiles);
+      if (installResult.namespacedFiles) {
+        allNamespacedFiles.push(...installResult.namespacedFiles);
       }
-      if (installResult.relocatedFiles && installResult.relocatedFiles.length > 0) {
+      if (installResult.relocatedFiles) {
         allRelocatedFiles.push(...installResult.relocatedFiles);
       }
 
@@ -267,7 +265,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       skipped: Array.from(rootFileResults.skipped)
     },
     totalOpenPackageFiles: totalInstalled + totalUpdated,
-    namespaced: anyNamespaced || undefined,
+    namespaced: allNamespacedFiles.length > 0 || undefined,
     namespacedFiles: allNamespacedFiles.length > 0 ? allNamespacedFiles : undefined,
     relocatedFiles: allRelocatedFiles.length > 0 ? allRelocatedFiles : undefined
   };

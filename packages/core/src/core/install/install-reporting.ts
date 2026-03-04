@@ -88,7 +88,6 @@ export function displayInstallationResults(data: InstallReportData, output: Outp
     errorCount,
     errors,
     isDependencyInstall = true,
-    namespaced,
     namespacedFiles,
     relocatedFiles,
     interactive = false,

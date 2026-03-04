@@ -172,10 +172,10 @@ export function mergeInstallReportData(
     },
     errorCount,
     errors,
+    namespaced: namespacedFiles.length > 0 || undefined,
     namespacedFiles: namespacedFiles.length > 0 ? namespacedFiles : undefined,
     relocatedFiles,
     replacedResources: replacedResources.length > 0 ? replacedResources : undefined,
-    namespaced: list.some(r => r.namespaced),
     resolvedPackages: first.resolvedPackages
   };
 }

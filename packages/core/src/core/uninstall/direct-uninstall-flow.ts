@@ -26,6 +26,12 @@ export interface DirectUninstallOptions extends UninstallOptions {
 export interface DirectUninstallResult {
   uninstalledCount: number;
   cancelled: boolean;
+  uninstalledItems: Array<{
+    name: string;
+    kind: 'package' | 'resource';
+    resourceType?: string;
+    scope: ResourceScope;
+  }>;
 }
 
 export interface CandidateFormatters {
@@ -118,8 +124,10 @@ export async function runDirectUninstallFlow(
   );
 
   if (selected.length === 0) {
-    return { uninstalledCount: 0, cancelled: true };
+    return { uninstalledCount: 0, cancelled: true, uninstalledItems: [] };
   }
+
+  const uninstalledItems: DirectUninstallResult['uninstalledItems'] = [];
 
   for (const candidate of selected) {
     const ctx = await createContext({
@@ -128,7 +136,22 @@ export async function runDirectUninstallFlow(
       interactive: false,
     });
     await executeUninstallCandidate(candidate, options, ctx);
+
+    if (candidate.kind === 'package') {
+      uninstalledItems.push({
+        name: candidate.package!.packageName,
+        kind: 'package',
+        scope: candidate.package!.scope,
+      });
+    } else {
+      uninstalledItems.push({
+        name: candidate.resource!.resourceName,
+        kind: 'resource',
+        resourceType: candidate.resource!.resourceType,
+        scope: candidate.resource!.scope,
+      });
+    }
   }
 
-  return { uninstalledCount: selected.length, cancelled: false };
+  return { uninstalledCount: selected.length, cancelled: false, uninstalledItems };
 }

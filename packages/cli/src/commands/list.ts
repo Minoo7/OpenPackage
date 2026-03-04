@@ -12,7 +12,7 @@ import {
 } from '@opkg/core/core/list/scope-data-collector.js';
 import { dim, printDepsView, printResourcesView } from '@opkg/core/core/list/list-printers.js';
 import type { EnhancedResourceGroup, ResourceScope } from '@opkg/core/core/list/list-tree-renderer.js';
-import { printJson } from '../utils/json-output.js';
+import { printJsonSuccess } from '../utils/json-output.js';
 
 interface ListOptions {
   global?: boolean;
@@ -28,7 +28,7 @@ interface ListOptions {
 // JSON serialization helpers
 // ---------------------------------------------------------------------------
 
-function serializeResourcesView(mergedResources: EnhancedResourceGroup[], showFiles: boolean) {
+function serializeResourcesView(mergedResources: EnhancedResourceGroup[]) {
   return mergedResources.map(group => ({
     resourceType: group.resourceType,
     resources: group.resources.map(r => ({
@@ -36,12 +36,17 @@ function serializeResourcesView(mergedResources: EnhancedResourceGroup[], showFi
       status: r.status,
       scopes: [...r.scopes],
       packages: r.packages ? [...r.packages] : [],
-      ...(showFiles ? { files: r.files.map(f => ({ source: f.source, target: f.target, status: f.status, scope: f.scope })) } : {}),
+      files: r.files.map(f => ({
+        source: f.source,
+        target: f.target,
+        status: f.status,
+        scope: f.scope,
+      })),
     })),
   }));
 }
 
-function serializeDepsView(results: Array<{ scope: ResourceScope; result: any }>, showFiles: boolean) {
+function serializeDepsView(results: Array<{ scope: ResourceScope; result: any }>) {
   return results.map(({ scope, result }) => ({
     scope,
     packages: (result.data.packages ?? []).map((pkg: any) => ({
@@ -50,8 +55,15 @@ function serializeDepsView(results: Array<{ scope: ResourceScope; result: any }>
       state: pkg.state ?? 'installed',
       dependencies: pkg.dependencies ?? [],
       ...(pkg.modifiedCount !== undefined ? { modifiedCount: pkg.modifiedCount } : {}),
+      ...(pkg.outdatedCount !== undefined ? { outdatedCount: pkg.outdatedCount } : {}),
+      ...(pkg.divergedCount !== undefined ? { divergedCount: pkg.divergedCount } : {}),
       ...(pkg.isRegistryPackage !== undefined ? { isRegistryPackage: pkg.isRegistryPackage } : {}),
-      ...(showFiles && pkg.files ? { files: pkg.files } : {}),
+      files: (pkg.files ?? []).map((f: any) => ({
+        source: f.source,
+        target: f.target,
+        status: f.status,
+        scope: f.scope,
+      })),
     })),
   }));
 }
@@ -93,7 +105,8 @@ async function listCommand(
 
   if (results.length === 0) {
     if (options.json) {
-      printJson([]);
+      const view = options.deps ? 'deps' : 'resources';
+      printJsonSuccess(view === 'deps' ? { view, scopes: [] } : { view, resources: [] });
       return { success: true };
     }
     if (packageName) {
@@ -109,7 +122,7 @@ async function listCommand(
   // --- Deps view ---
   if (options.deps) {
     if (options.json) {
-      printJson(serializeDepsView(results, !!options.files));
+      printJsonSuccess({ view: 'deps', scopes: serializeDepsView(results) });
       return { success: true };
     }
     // --- Compute header ---
@@ -164,7 +177,7 @@ async function listCommand(
 
   if (scopedResources.length === 0) {
     if (options.json) {
-      printJson([]);
+      printJsonSuccess({ view: 'resources', resources: [] });
       return { success: true };
     }
     if (packageName) {
@@ -178,7 +191,7 @@ async function listCommand(
   const mergedResources = mergeResourcesAcrossScopes(scopedResources);
 
   if (options.json) {
-    printJson(serializeResourcesView(mergedResources, !!options.files));
+    printJsonSuccess({ view: 'resources', resources: serializeResourcesView(mergedResources) });
     return { success: true };
   }
 

@@ -10,7 +10,8 @@ import { Command } from 'commander';
 import { CommandResult } from '@opkg/core/types/index.js';
 import { createCliExecutionContext } from '../cli/context.js';
 import { runSearchPipeline, type SearchOptions } from '@opkg/core/core/search/search-pipeline.js';
-import { displayResults, displayJson } from './search-display.js';
+import { displayResults } from './search-display.js';
+import { printJsonSuccess } from '../utils/json-output.js';
 
 async function searchCommand(
   query: string | undefined,
@@ -30,7 +31,16 @@ async function searchCommand(
   });
 
   if (options.json) {
-    displayJson(result);
+    printJsonSuccess({
+      query: query ?? null,
+      results: result.matches.map(m => ({
+        name: m.name,
+        source: m.source,
+        ...(m.versions ? { versions: m.versions } : {}),
+        ...(m.description ? { description: m.description } : {}),
+        ...(m.keywords ? { keywords: m.keywords } : {}),
+      })),
+    });
   } else {
     displayResults(result, options.all || false);
   }

@@ -12,6 +12,7 @@ import { parseScope } from '@opkg/core/core/scope-resolution.js';
 import { resolveWhich } from '@opkg/core/core/which/which-pipeline.js';
 import { printWhichResults } from '@opkg/core/core/which/which-printers.js';
 import type { TraverseScopesOptions } from '@opkg/core/core/resources/scope-traversal.js';
+import { printJsonSuccess } from '../utils/json-output.js';
 
 // ---------------------------------------------------------------------------
 // Main command
@@ -19,7 +20,7 @@ import type { TraverseScopesOptions } from '@opkg/core/core/resources/scope-trav
 
 async function whichCommand(
   resourceName: string,
-  options: { scope?: string; files?: boolean },
+  options: { scope?: string; files?: boolean; json?: boolean },
   command: Command
 ): Promise<void> {
   const programOpts = command.parent?.opts() || {};
@@ -44,6 +45,24 @@ async function whichCommand(
   }
 
   const results = await resolveWhich(resourceName, traverseOpts);
+
+  if (options.json) {
+    printJsonSuccess({
+      query: resourceName,
+      results: results.map(r => ({
+        resourceName: r.resourceName,
+        resourceType: r.resourceType,
+        kind: r.kind,
+        scope: r.scope,
+        ...(r.packageName ? { packageName: r.packageName } : {}),
+        ...(r.packageVersion ? { packageVersion: r.packageVersion } : {}),
+        ...(r.packageSourcePath ? { packageSourcePath: r.packageSourcePath } : {}),
+        files: r.targetFiles,
+      })),
+    });
+    return;
+  }
+
   printWhichResults(resourceName, results, { files: options.files });
 }
 

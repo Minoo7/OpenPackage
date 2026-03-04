@@ -82,13 +82,3 @@ export function displayResults(result: SearchResult, showAll: boolean): void {
   }
 }
 
-export function displayJson(result: SearchResult): void {
-  const output = result.matches.map(m => {
-    const entry: Record<string, unknown> = { name: m.name, source: m.source };
-    if (m.versions) entry.versions = m.versions;
-    if (m.description) entry.description = m.description;
-    if (m.keywords) entry.keywords = m.keywords;
-    return entry;
-  });
-  console.log(JSON.stringify(output, null, 2));
-}

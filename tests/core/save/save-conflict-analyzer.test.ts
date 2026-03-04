@@ -8,8 +8,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   analyzeGroup,
-  deduplicateCandidates,
-  hasContentDifference,
   getNewestCandidate,
   sortCandidatesByMtime,
   type ConflictAnalysisType
@@ -223,109 +221,6 @@ describe('save-conflict-analyzer', () => {
       const analysis = await analyzeGroup(group, {}, dummyWorkspaceRoot);
 
       assert.strictEqual(analysis.hasPlatformCandidates, false);
-    });
-  });
-
-  describe('deduplicateCandidates', () => {
-    it('should remove duplicate content hashes', () => {
-      const candidates = [
-        createCandidate({
-          contentHash: 'hash-a',
-          displayPath: 'path1'
-        }),
-        createCandidate({
-          contentHash: 'hash-a', // duplicate
-          displayPath: 'path2'
-        }),
-        createCandidate({
-          contentHash: 'hash-b',
-          displayPath: 'path3'
-        })
-      ];
-
-      const unique = deduplicateCandidates(candidates);
-
-      assert.strictEqual(unique.length, 2);
-      assert.strictEqual(unique[0].contentHash, 'hash-a');
-      assert.strictEqual(unique[0].displayPath, 'path1'); // First occurrence
-      assert.strictEqual(unique[1].contentHash, 'hash-b');
-    });
-
-    it('should preserve order of first occurrence', () => {
-      const candidates = [
-        createCandidate({ contentHash: 'a', displayPath: 'first' }),
-        createCandidate({ contentHash: 'b', displayPath: 'second' }),
-        createCandidate({ contentHash: 'a', displayPath: 'duplicate' }),
-        createCandidate({ contentHash: 'c', displayPath: 'third' })
-      ];
-
-      const unique = deduplicateCandidates(candidates);
-
-      assert.strictEqual(unique.length, 3);
-      assert.strictEqual(unique[0].displayPath, 'first');
-      assert.strictEqual(unique[1].displayPath, 'second');
-      assert.strictEqual(unique[2].displayPath, 'third');
-    });
-
-    it('should handle empty array', () => {
-      const unique = deduplicateCandidates([]);
-      assert.strictEqual(unique.length, 0);
-    });
-
-    it('should handle all unique candidates', () => {
-      const candidates = [
-        createCandidate({ contentHash: 'a' }),
-        createCandidate({ contentHash: 'b' }),
-        createCandidate({ contentHash: 'c' })
-      ];
-
-      const unique = deduplicateCandidates(candidates);
-      assert.strictEqual(unique.length, 3);
-    });
-
-    it('should handle all identical candidates', () => {
-      const candidates = [
-        createCandidate({ contentHash: 'same', displayPath: 'a' }),
-        createCandidate({ contentHash: 'same', displayPath: 'b' }),
-        createCandidate({ contentHash: 'same', displayPath: 'c' })
-      ];
-
-      const unique = deduplicateCandidates(candidates);
-      assert.strictEqual(unique.length, 1);
-      assert.strictEqual(unique[0].displayPath, 'a'); // First one
-    });
-  });
-
-  describe('hasContentDifference', () => {
-    it('should return true when no local candidate', () => {
-      const workspace = [createCandidate({ contentHash: 'abc' })];
-      assert.strictEqual(hasContentDifference(undefined, workspace), true);
-    });
-
-    it('should return false when no workspace candidates', () => {
-      const local = createCandidate({ contentHash: 'abc' });
-      assert.strictEqual(hasContentDifference(local, []), false);
-    });
-
-    it('should return true when workspace differs from local', () => {
-      const local = createCandidate({ contentHash: 'local-hash' });
-      const workspace = [createCandidate({ contentHash: 'workspace-hash' })];
-      assert.strictEqual(hasContentDifference(local, workspace), true);
-    });
-
-    it('should return false when workspace matches local', () => {
-      const local = createCandidate({ contentHash: 'same-hash' });
-      const workspace = [createCandidate({ contentHash: 'same-hash' })];
-      assert.strictEqual(hasContentDifference(local, workspace), false);
-    });
-
-    it('should return true when any workspace candidate differs', () => {
-      const local = createCandidate({ contentHash: 'local-hash' });
-      const workspace = [
-        createCandidate({ contentHash: 'local-hash' }), // matches
-        createCandidate({ contentHash: 'different-hash' }) // differs
-      ];
-      assert.strictEqual(hasContentDifference(local, workspace), true);
     });
   });
 

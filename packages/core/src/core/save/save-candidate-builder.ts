@@ -43,9 +43,6 @@ export interface CandidateBuilderOptions {
  * Result of candidate building process
  */
 export interface CandidateBuildResult {
-  /** Candidates from package source (empty when using lazy path via localSourceRefs) */
-  localCandidates: SaveCandidate[];
-  
   /** Lightweight refs for local source files (used for lazy materialization) */
   localSourceRefs: LocalSourceRef[];
   
@@ -103,7 +100,6 @@ export async function buildCandidates(
   );
   
   return {
-    localCandidates: [],
     localSourceRefs,
     workspaceCandidates,
     errors

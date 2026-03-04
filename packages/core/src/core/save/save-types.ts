@@ -6,6 +6,7 @@
  */
 
 import type { Platform } from '../platforms.js';
+import type { ContentStatus } from '../list/content-status-checker.js';
 
 /**
  * Conflict resolution strategy for save operations
@@ -207,4 +208,15 @@ export interface CandidateBuildError {
   
   /** Human-readable error message */
   reason: string;
+}
+
+/**
+ * Summary of content status pre-filtering.
+ * Populated before candidate building to skip clean/outdated files.
+ */
+export interface StatusSummary {
+  cleanFileCount: number;
+  outdatedFiles: string[];
+  divergedFiles: string[];
+  statusMap?: Map<string, ContentStatus>;
 }

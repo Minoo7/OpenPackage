@@ -38,18 +38,18 @@ import {
   createSuccessResult,
   createErrorResult
 } from './save-result-reporter.js';
+import { checkContentStatus } from '../list/content-status-checker.js';
+import { computeSourceHash } from '../../utils/install-hash.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { readTextFile, exists } from '../../utils/fs.js';
 import { getTargetPath, isComplexMapping } from '../../utils/workspace-index-helpers.js';
 import type { ConflictAnalysis } from './save-conflict-analyzer.js';
-import type { WriteResult, SaveConflictStrategy } from './save-types.js';
+import type { WriteResult, SaveConflictStrategy, StatusSummary } from './save-types.js';
 
 /**
  * Options for save-to-source pipeline
  */
 export interface SaveToSourceOptions {
-  /** Enable force mode (auto-select newest when conflicts occur) */
-  force?: boolean;
   /** Preview changes without writing to source */
   dryRun?: boolean;
   /** Conflict resolution strategy */
@@ -134,12 +134,80 @@ export async function executeSavePipeline(
   options: SaveToSourceOptions = {},
   ctx?: ExecutionContext
 ): Promise<CommandResult> {
+  // Phase 1.5: Status pre-filter — skip clean and outdated files
+  let statusSummary: StatusSummary = { cleanFileCount: 0, outdatedFiles: [], divergedFiles: [] };
+  let activeFilesMapping = filesMapping;
+
+  try {
+    const statusMap = await checkContentStatus(cwd, packageRoot, filesMapping);
+    statusSummary.statusMap = statusMap;
+
+    const filteredMapping: Record<string, (string | WorkspaceIndexFileMapping)[]> = {};
+    for (const [sourceKey, targets] of Object.entries(filesMapping)) {
+      if (!Array.isArray(targets)) continue;
+
+      const kept: (string | WorkspaceIndexFileMapping)[] = [];
+      for (const mapping of targets) {
+        const targetPath = getTargetPath(mapping);
+        const key = `${sourceKey}::${targetPath}`;
+        const status = statusMap.get(key);
+
+        if (status === 'clean') {
+          // Only skip if source actually exists — 'clean' with missing source
+          // means a new workspace file (status checker falls through to 'clean')
+          const absSource = path.join(packageRoot, sourceKey);
+          if (await exists(absSource)) {
+            statusSummary.cleanFileCount++;
+            continue; // Skip truly clean files
+          }
+        }
+        if (status === 'outdated') {
+          statusSummary.outdatedFiles.push(targetPath);
+          continue; // Skip outdated files (source newer, warn later)
+        }
+        if (status === 'diverged') {
+          statusSummary.divergedFiles.push(targetPath);
+        }
+        // modified, diverged, merged, or no-status → keep
+        kept.push(mapping);
+      }
+
+      if (kept.length > 0) {
+        filteredMapping[sourceKey] = kept;
+      }
+    }
+
+    activeFilesMapping = filteredMapping;
+
+    if (Object.keys(activeFilesMapping).length === 0) {
+      const parts = [`Saved ${packageName}\n  No workspace changes detected`];
+      if (statusSummary.cleanFileCount > 0) {
+        parts.push(`  ${statusSummary.cleanFileCount} file(s) already clean`);
+      }
+      if (statusSummary.outdatedFiles.length > 0) {
+        parts.push(`  ${statusSummary.outdatedFiles.length} file(s) outdated (source updated since install)`);
+        parts.push(`  Run 'opkg install ${packageName}' to sync latest source changes`);
+      }
+      return createSuccessResult(packageName, parts.join('\n'));
+    }
+
+    logger.debug(
+      `Status pre-filter: ${statusSummary.cleanFileCount} clean, ` +
+      `${statusSummary.outdatedFiles.length} outdated, ` +
+      `${statusSummary.divergedFiles.length} diverged, ` +
+      `${Object.keys(activeFilesMapping).length} active source keys remaining`
+    );
+  } catch (error) {
+    // Status check is non-fatal — proceed with full filesMapping
+    logger.debug(`Status pre-filter failed (proceeding with all files): ${error}`);
+  }
+
   // Phase 2: Build candidates from workspace and source
   logger.debug(`Building candidates for ${packageName}`);
   const candidateResult = await buildCandidates({
     packageRoot,
     workspaceRoot: cwd,
-    filesMapping
+    filesMapping: activeFilesMapping
   });
 
   if (candidateResult.errors.length > 0) {
@@ -197,6 +265,7 @@ export async function executeSavePipeline(
   const analyzeOpts: AnalyzeGroupOptions = {
     conflictStrategy: normalized.conflicts,
     preferPlatform: normalized.prefer,
+    statusMap: statusSummary.statusMap,
   };
 
   // Phase 6: Analyze all groups first, then split into auto-resolvable vs interactive
@@ -256,12 +325,12 @@ export async function executeSavePipeline(
 
   // Phase 7: Update workspace index hashes so three-way pivot resets after save
   if (!options.dryRun) {
-    await updateWorkspaceHashes(cwd, packageName, filesMapping, allWriteResults);
+    await updateWorkspaceHashes(cwd, packageName, packageRoot, filesMapping, allWriteResults);
   }
 
   // Phase 8: Build and format report
   logger.debug('Building save report');
-  const report = buildSaveReport(packageName, analyses, allWriteResults, options.dryRun);
+  const report = buildSaveReport(packageName, analyses, allWriteResults, options.dryRun, statusSummary);
 
   // Phase 9: Return result
   return createCommandResult(report);
@@ -370,6 +439,7 @@ export async function validateSavePreconditions(
 async function updateWorkspaceHashes(
   cwd: string,
   packageName: string,
+  packageRoot: string,
   filesMapping: Record<string, (string | WorkspaceIndexFileMapping)[]>,
   allWriteResults: WriteResult[][]
 ): Promise<void> {
@@ -405,8 +475,17 @@ async function updateWorkspaceHashes(
         if (!(await exists(absTarget))) continue;
 
         try {
-          const content = await readTextFile(absTarget);
-          const hash = await calculateFileHash(content);
+          // Use computeSourceHash to match what list --status computes,
+          // ensuring the pivot hash is consistent with status checks.
+          const absSource = path.join(packageRoot, sourceKey);
+          let hash: string;
+          if (await exists(absSource)) {
+            hash = await computeSourceHash(absSource, absTarget, cwd);
+          } else {
+            // Source may not exist yet (new file) — use workspace content
+            const content = await readTextFile(absTarget);
+            hash = await calculateFileHash(content);
+          }
 
           if (isComplexMapping(mapping)) {
             mapping.hash = hash;

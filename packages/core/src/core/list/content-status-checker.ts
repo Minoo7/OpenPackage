@@ -14,11 +14,8 @@ import { calculateFileHash } from '../../utils/hash-utils.js';
 import { readTextFile, exists } from '../../utils/fs.js';
 import { getTargetPath, isComplexMapping, isMergedMapping } from '../../utils/workspace-index-helpers.js';
 import { extractContentByKeys } from '../save/save-merge-extractor.js';
-import { DefaultFlowExecutor } from '../flows/flow-executor.js';
-import { mapPlatformFileToUniversal } from '../platform/platform-mapper.js';
-import { MARKDOWN_EXTENSIONS } from '../../constants/index.js';
+import { computeSourceHash } from '../../utils/install-hash.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
-import type { FlowContext } from '../../types/flows.js';
 import { logger } from '../../utils/logger.js';
 
 export type ContentStatus = 'modified' | 'clean' | 'outdated' | 'diverged' | 'merged';
@@ -74,47 +71,6 @@ export async function checkContentStatus(
   }
 
   return results;
-}
-
-/**
- * Compute the hash of a source file as it would appear after install.
- *
- * For markdown files deployed to a platform directory, runs the source through
- * the flow executor's own loadSourceFile → serializeTargetContent path — the
- * same code the installer uses.  This accounts for platform frontmatter merge,
- * YAML re-serialization, and any future install-time transforms without
- * maintaining a separate replica of the pipeline.
- */
-async function computeSourceHash(
-  absSourcePath: string,
-  absWorkspacePath: string,
-  targetDir: string
-): Promise<string> {
-  const ext = path.extname(absSourcePath).toLowerCase();
-
-  if (MARKDOWN_EXTENSIONS.has(ext)) {
-    try {
-      const platformInfo = mapPlatformFileToUniversal(absWorkspacePath, targetDir);
-      const executor = new DefaultFlowExecutor();
-      const context: FlowContext = {
-        workspaceRoot: targetDir,
-        packageRoot: path.dirname(absSourcePath),
-        platform: platformInfo?.platform ?? 'claude',
-        packageName: '',
-        direction: 'install',
-        variables: {}
-      };
-      const loaded = await executor.loadSourceFile(absSourcePath, context);
-      const serialized = executor.serializeTargetContent(loaded.data, loaded.format);
-      return calculateFileHash(serialized);
-    } catch {
-      const sourceContent = await readTextFile(absSourcePath);
-      return calculateFileHash(sourceContent);
-    }
-  }
-
-  const sourceContent = await readTextFile(absSourcePath);
-  return calculateFileHash(sourceContent);
 }
 
 /**

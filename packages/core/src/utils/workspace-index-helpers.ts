@@ -19,6 +19,20 @@ export function isComplexMapping(mapping: string | WorkspaceIndexFileMapping): m
 }
 
 /**
+ * Check if a mapping represents a merged file (multiple packages contributing to one target)
+ */
+export function isMergedMapping(
+  mapping: string | WorkspaceIndexFileMapping
+): mapping is WorkspaceIndexFileMapping {
+  return (
+    typeof mapping !== 'string' &&
+    !!mapping.merge &&
+    Array.isArray(mapping.keys) &&
+    mapping.keys.length > 0
+  );
+}
+
+/**
  * Extract all target paths from file mappings
  */
 export function extractAllTargetPaths(

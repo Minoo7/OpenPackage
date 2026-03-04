@@ -21,6 +21,7 @@ import { parse as parseJsonc } from 'jsonc-parser';
 import { JSONPath } from 'jsonpath-plus';
 import { minimatch } from 'minimatch';
 import * as fsUtils from '../../utils/fs.js';
+import { calculateFileHash } from '../../utils/hash-utils.js';
 import { mergePackageContentIntoRootFile } from '../../utils/root-file-merger.js';
 import { resolveRecursiveGlobTargetRelativePath } from '../glob-target-mapping.js';
 import type {
@@ -611,8 +612,9 @@ export class DefaultFlowExecutor implements FlowExecutor {
       }
 
       // Step 8: Write to target file
+      let contentHash: string | undefined;
       if (!context.dryRun) {
-        await this.writeTargetFile(targetPath, data, sourceContent.format);
+        contentHash = await this.writeTargetFile(targetPath, data, sourceContent.format);
       }
 
       return {
@@ -622,6 +624,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
         transformed,
         keys: contributedKeys,
         merge: flow.merge,
+        contentHash,
         warnings: warnings.length > 0 ? warnings : undefined,
         conflicts: conflicts.length > 0 ? conflicts : undefined,
         pipeline: this.getPipeline(flow),
@@ -658,17 +661,18 @@ export class DefaultFlowExecutor implements FlowExecutor {
   /**
    * Write transformed content to target file
    */
-  async writeTargetFile(filePath: string, content: any, sourceFormat: FileFormat): Promise<void> {
+  async writeTargetFile(filePath: string, content: any, sourceFormat: FileFormat): Promise<string> {
     // Detect target format from file extension
     const targetFormat = this.detectFormat(filePath, '');
     const serialized = this.serializeTargetContent(content, targetFormat);
+    const hash = await calculateFileHash(serialized);
 
     // Skip write if target already has identical content (e.g., claimed unowned file)
     if (await fsUtils.exists(filePath)) {
       try {
         const existing = await fsUtils.readTextFile(filePath, 'utf8');
         if (existing === serialized) {
-          return;
+          return hash;
         }
       } catch {
         // Read failed — proceed with write
@@ -677,6 +681,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
 
     await fsUtils.ensureDir(path.dirname(filePath));
     await fsUtils.writeTextFile(filePath, serialized);
+    return hash;
   }
 
   /**
@@ -712,8 +717,10 @@ export class DefaultFlowExecutor implements FlowExecutor {
       }
 
       // Simple byte copy
+      let contentHash: string | undefined;
       if (!context.dryRun) {
         const content = await fs.readFile(sourcePath);
+        contentHash = await calculateFileHash(content.toString('utf8'));
 
         // Skip write if target already has identical content
         if (await fsUtils.exists(targetPath)) {
@@ -726,6 +733,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
                 target: targetPath,
                 success: true,
                 transformed: false,
+                contentHash,
                 warnings: warnings.length > 0 ? warnings : undefined,
               };
             }
@@ -743,6 +751,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
         target: targetPath,
         success: true,
         transformed: false,
+        contentHash,
         warnings: warnings.length > 0 ? warnings : undefined,
       };
     } catch (error) {

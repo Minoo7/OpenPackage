@@ -102,6 +102,10 @@ function sanitizeWorkspaceIndexPackage(entry: any): WorkspaceIndexPackage | null
               mapping.keys = cleanedKeys;
             }
           }
+          const rawHash = (item as any).hash;
+          if (typeof rawHash === 'string' && rawHash.trim().length > 0) {
+            mapping.hash = rawHash;
+          }
           targets.push(mapping);
         }
       }

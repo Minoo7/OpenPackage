@@ -12,7 +12,7 @@ import path from 'path';
 
 import { calculateFileHash } from '../../utils/hash-utils.js';
 import { readTextFile, exists } from '../../utils/fs.js';
-import { getTargetPath, isComplexMapping } from '../../utils/workspace-index-helpers.js';
+import { getTargetPath, isComplexMapping, isMergedMapping } from '../../utils/workspace-index-helpers.js';
 import { extractContentByKeys } from '../save/save-merge-extractor.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
 import { logger } from '../../utils/logger.js';
@@ -45,7 +45,21 @@ export async function checkContentStatus(
       // Skip if workspace file doesn't exist (it's missing, not modified/clean)
       if (!(await exists(absTarget))) continue;
 
-      const isMerged = isComplexMapping(mapping) && mapping.merge && mapping.keys && mapping.keys.length > 0;
+      const isMerged: boolean = isMergedMapping(mapping);
+
+      // Fast path: use stored install-time hash when available (skip merged files —
+      // their hash reflects the full file at one package's install time, not just that
+      // package's contribution, so key-based comparison is needed instead)
+      if (isComplexMapping(mapping) && mapping.hash && !isMerged) {
+        try {
+          const workspaceContent = await readTextFile(absTarget);
+          const workspaceHash = await calculateFileHash(workspaceContent);
+          results.set(key, workspaceHash === mapping.hash ? 'clean' : 'modified');
+          continue;
+        } catch (error) {
+          logger.debug(`Hash comparison failed for ${absTarget}, falling back: ${error}`);
+        }
+      }
 
       if (isMerged) {
         const status = await checkMergedFileStatus(

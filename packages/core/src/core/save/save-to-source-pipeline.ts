@@ -433,20 +433,18 @@ export async function validateSavePreconditions(
 /**
  * Update workspace index hashes after a successful save.
  *
+ * Stores dual hashes per file mapping:
+ * - `hash`: xxhash3 of the workspace file (workspace-side pivot)
+ * - `sourceHash`: xxhash3 of the raw source file after save (source-side pivot)
+ *
  * Only updates targets that were active in the save (i.e., in activeFilesMapping).
  * Non-active targets (clean files filtered out by status pre-filter) keep their
- * existing pivot hashes — updating them would make them appear "modified" relative
- * to the new source even though their workspace content hasn't changed.
- *
- * Uses hash(workspace_file) as the pivot rather than computeSourceHash(source),
- * because the workspace file is the ground truth after save (it hasn't changed),
- * and markdown round-trip through the install pipeline can alter frontmatter
- * formatting, producing a hash that doesn't match the workspace.
+ * existing pivot hashes.
  */
 async function updateWorkspaceHashes(
   cwd: string,
   packageName: string,
-  _packageRoot: string,
+  packageRoot: string,
   activeFilesMapping: Record<string, (string | WorkspaceIndexFileMapping)[]>,
   allWriteResults: WriteResult[][]
 ): Promise<void> {
@@ -497,18 +495,25 @@ async function updateWorkspaceHashes(
         if (!(await exists(absTarget))) continue;
 
         try {
-          // Use hash(workspace_file) as pivot — the workspace is the ground
-          // truth after save (it hasn't changed). computeSourceHash(source)
-          // can produce a different hash for markdown files due to frontmatter
-          // re-serialization in the install pipeline round-trip.
           const content = await readTextFile(absTarget);
           const hash = await calculateFileHash(content);
 
+          // Compute source hash from raw source file after save
+          const absSource = path.join(packageRoot, sourceKey);
+          let sourceHashValue: string | undefined;
+          if (await exists(absSource)) {
+            const sourceContent = await readTextFile(absSource);
+            sourceHashValue = await calculateFileHash(sourceContent);
+          }
+
           if (isComplexMapping(mapping)) {
             mapping.hash = hash;
+            if (sourceHashValue) mapping.sourceHash = sourceHashValue;
           } else {
-            // Upgrade simple string mapping to object form to store hash
-            targets[i] = { target: mapping, hash };
+            // Upgrade simple string mapping to object form to store hashes
+            const upgraded: WorkspaceIndexFileMapping = { target: mapping as string, hash };
+            if (sourceHashValue) upgraded.sourceHash = sourceHashValue;
+            targets[i] = upgraded;
           }
           updated = true;
         } catch (error) {

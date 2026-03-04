@@ -4,7 +4,10 @@
  * Lightweight read-only content comparison for the `list --status` feature.
  * Compares workspace file content against package source to detect modifications.
  *
- * For normal files: hash workspace file vs source file.
+ * Uses dual hashes stored at install time:
+ * - `hash`: xxhash3 of the workspace file written at install (workspace-side pivot)
+ * - `sourceHash`: xxhash3 of the raw source file at install (source-side pivot)
+ *
  * For merged files: extract package contribution via merge keys, then hash-compare.
  */
 
@@ -14,7 +17,6 @@ import { calculateFileHash } from '../../utils/hash-utils.js';
 import { readTextFile, exists } from '../../utils/fs.js';
 import { getTargetPath, isComplexMapping, isMergedMapping } from '../../utils/workspace-index-helpers.js';
 import { extractContentByKeys } from '../save/save-merge-extractor.js';
-import { computeSourceHash } from '../../utils/install-hash.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
 import { logger } from '../../utils/logger.js';
 
@@ -57,14 +59,14 @@ export async function checkContentStatus(
         results.set(key, status);
       } else {
         const installHash = isComplexMapping(mapping) ? mapping.hash : undefined;
+        const installSourceHash = isComplexMapping(mapping) ? mapping.sourceHash : undefined;
         const absSource = path.join(packageSourceRoot, sourceKey);
 
         if (installHash) {
-          const status = await checkThreeWayStatus(absTarget, absSource, installHash, targetDir);
+          const status = await checkThreeWayStatus(absTarget, absSource, installHash, installSourceHash);
           results.set(key, status);
         } else {
-          const status = await checkLegacyStatus(absTarget, absSource, targetDir);
-          results.set(key, status);
+          results.set(key, 'clean');
         }
       }
     }
@@ -74,16 +76,17 @@ export async function checkContentStatus(
 }
 
 /**
- * Three-way status check using the install-time hash as pivot.
+ * Three-way status check using dual install-time hashes.
  *
- * Compares workspace and source against the stored install hash to determine
- * which side(s) changed since the last install.
+ * Compares workspace content against `installHash` (workspace-side pivot)
+ * and source content against `installSourceHash` (source-side pivot).
+ * When `installSourceHash` is absent (pre-migration data), treats source as unchanged.
  */
 async function checkThreeWayStatus(
   absWorkspacePath: string,
   absSourcePath: string,
   installHash: string,
-  targetDir: string
+  installSourceHash?: string
 ): Promise<ContentStatus> {
   try {
     const workspaceContent = await readTextFile(absWorkspacePath);
@@ -95,8 +98,14 @@ async function checkThreeWayStatus(
       return workspaceChanged ? 'modified' : 'clean';
     }
 
-    const sourceHash = await computeSourceHash(absSourcePath, absWorkspacePath, targetDir);
-    const sourceChanged = sourceHash !== installHash;
+    // Without installSourceHash (pre-migration), we can't detect source changes
+    if (!installSourceHash) {
+      return workspaceChanged ? 'modified' : 'clean';
+    }
+
+    const sourceContent = await readTextFile(absSourcePath);
+    const sourceHash = await calculateFileHash(sourceContent);
+    const sourceChanged = sourceHash !== installSourceHash;
 
     if (!workspaceChanged && !sourceChanged) return 'clean';
     if (workspaceChanged && !sourceChanged) return 'modified';
@@ -104,33 +113,6 @@ async function checkThreeWayStatus(
     return 'diverged';
   } catch (error) {
     logger.debug(`Three-way check failed for ${absWorkspacePath}: ${error}`);
-    return 'clean';
-  }
-}
-
-/**
- * Legacy two-way status check when no install hash is available.
- *
- * Without an install-time pivot we cannot tell which side changed,
- * so any difference is reported as 'diverged'.
- */
-async function checkLegacyStatus(
-  absWorkspacePath: string,
-  absSourcePath: string,
-  targetDir: string
-): Promise<ContentStatus> {
-  try {
-    if (!(await exists(absSourcePath))) {
-      return 'clean';
-    }
-
-    const workspaceContent = await readTextFile(absWorkspacePath);
-    const workspaceHash = await calculateFileHash(workspaceContent);
-    const sourceHash = await computeSourceHash(absSourcePath, absWorkspacePath, targetDir);
-
-    return workspaceHash === sourceHash ? 'clean' : 'diverged';
-  } catch (error) {
-    logger.debug(`Legacy content check failed for ${absWorkspacePath}: ${error}`);
     return 'clean';
   }
 }

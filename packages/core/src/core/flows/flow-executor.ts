@@ -451,10 +451,18 @@ export class DefaultFlowExecutor implements FlowExecutor {
       return await this.executePassThroughCopy(flow, sourcePath, targetPath, context);
     }
 
+    // Hash raw source BEFORE any transforms (platform merge, etc.)
+    let sourceContentHash: string | undefined;
+    if (!context.dryRun) {
+      const rawSourceContent = await fsUtils.readTextFile(sourcePath);
+      sourceContentHash = await calculateFileHash(rawSourceContent);
+    }
+
     // Step 1: Load source file with parsing
     const sourceContent = await this.loadSourceFile(sourcePath, context);
 
-    return this.executePipelineWithContent(flow, sourceContent, sourcePath, targetPath, context);
+    const result = await this.executePipelineWithContent(flow, sourceContent, sourcePath, targetPath, context);
+    return { ...result, sourceContentHash };
   }
 
   /**
@@ -734,6 +742,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
                 success: true,
                 transformed: false,
                 contentHash,
+                sourceContentHash: contentHash,
                 warnings: warnings.length > 0 ? warnings : undefined,
               };
             }
@@ -752,6 +761,7 @@ export class DefaultFlowExecutor implements FlowExecutor {
         success: true,
         transformed: false,
         contentHash,
+        sourceContentHash: contentHash,
         warnings: warnings.length > 0 ? warnings : undefined,
       };
     } catch (error) {

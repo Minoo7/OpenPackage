@@ -322,6 +322,9 @@ export interface FlowResult {
   /** Hash of the serialized content written to disk at install time */
   contentHash?: string;
 
+  /** Hash of the raw source file before any transforms */
+  sourceContentHash?: string;
+
   /** Error if execution failed */
   error?: Error;
 

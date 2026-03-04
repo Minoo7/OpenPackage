@@ -106,6 +106,10 @@ function sanitizeWorkspaceIndexPackage(entry: any): WorkspaceIndexPackage | null
           if (typeof rawHash === 'string' && rawHash.trim().length > 0) {
             mapping.hash = rawHash;
           }
+          const rawSourceHash = (item as any).sourceHash;
+          if (typeof rawSourceHash === 'string' && rawSourceHash.trim().length > 0) {
+            mapping.sourceHash = rawSourceHash;
+          }
           targets.push(mapping);
         }
       }

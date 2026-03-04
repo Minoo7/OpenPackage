@@ -52,6 +52,8 @@ export interface InstallationPhasesResult {
   namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
+  /** Absolute paths of files that were auto-claimed (content identical, unowned on disk) */
+  claimedFiles?: string[];
 }
 
 /**
@@ -72,6 +74,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
   const allDeletedFiles: string[] = [];
   const errors: string[] = [];
   const allNamespacedFiles: string[] = [];
+  const allClaimedFiles: string[] = [];
   const allRelocatedFiles: RelocatedFile[] = [];
 
   for (const resolved of packages) {
@@ -112,6 +115,9 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       // Aggregate namespace metadata
       if (installResult.namespacedFiles) {
         allNamespacedFiles.push(...installResult.namespacedFiles);
+      }
+      if (installResult.claimedFiles) {
+        allClaimedFiles.push(...installResult.claimedFiles);
       }
       if (installResult.relocatedFiles) {
         allRelocatedFiles.push(...installResult.relocatedFiles);
@@ -267,6 +273,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
     totalOpenPackageFiles: totalInstalled + totalUpdated,
     namespaced: allNamespacedFiles.length > 0 || undefined,
     namespacedFiles: allNamespacedFiles.length > 0 ? allNamespacedFiles : undefined,
-    relocatedFiles: allRelocatedFiles.length > 0 ? allRelocatedFiles : undefined
+    relocatedFiles: allRelocatedFiles.length > 0 ? allRelocatedFiles : undefined,
+    claimedFiles: allClaimedFiles.length > 0 ? allClaimedFiles : undefined
   };
 }

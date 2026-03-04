@@ -69,6 +69,8 @@ export interface IndexInstallResult {
   namespacedFiles?: string[];
   /** Files that were physically relocated on disk during namespace resolution */
   relocatedFiles?: RelocatedFile[];
+  /** Absolute paths of files that were auto-claimed (content identical, unowned on disk) */
+  claimedFiles?: string[];
 }
 
 interface PackageIndexRecord {
@@ -133,6 +135,7 @@ export async function installPackageByIndexWithFlows(
 
   const allTargetPaths = new Set<string>();
   const namespacedTargetPaths: string[] = [];
+  const claimedTargetPaths: string[] = [];
   const allConflicts: string[] = [];
   const allErrors: string[] = [];
   const fileMapping: Record<string, (string | WorkspaceIndexFileMapping)[]> = {};
@@ -310,6 +313,9 @@ export async function installPackageByIndexWithFlows(
       if (result.namespaced) {
         namespacedTargetPaths.push(...pathsThisPlatform);
       }
+      if (result.claimedFiles && result.claimedFiles.length > 0) {
+        claimedTargetPaths.push(...result.claimedFiles.map(rel => join(cwd, rel)));
+      }
       if (result.relocatedFiles && result.relocatedFiles.length > 0) {
         if (!aggregatedResult.relocatedFiles) {
           aggregatedResult.relocatedFiles = [];
@@ -398,6 +404,9 @@ export async function installPackageByIndexWithFlows(
   if (namespacedTargetPaths.length > 0) {
     aggregatedResult.namespaced = true;
     aggregatedResult.namespacedFiles = namespacedTargetPaths;
+  }
+  if (claimedTargetPaths.length > 0) {
+    aggregatedResult.claimedFiles = claimedTargetPaths;
   }
 
   return aggregatedResult;

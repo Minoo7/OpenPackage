@@ -117,7 +117,7 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
         }
 
         // Resolve conflicts — get back the filtered set of allowed targets
-        const { allowedTargets, warnings, packageWasNamespaced, namespaceDir, relocatedFiles } = await resolveConflictsForTargets(
+        const { allowedTargets, warnings, packageWasNamespaced, namespaceDir, relocatedFiles, claimedFiles } = await resolveConflictsForTargets(
           workspaceRoot,
           targets,
           ownershipContext,
@@ -166,6 +166,7 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
         // Attach namespace metadata to the result
         result.namespaced = wasNamespaced;
         result.relocatedFiles = conflictRelocatedFiles;
+        result.claimedFiles = claimedFiles;
 
         this.logResults(result, context);
         return result;

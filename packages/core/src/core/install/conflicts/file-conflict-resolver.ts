@@ -142,6 +142,8 @@ export interface ConflictResolutionResult {
    * own namespace subdirectories to make room for the incoming package.
    */
   relocatedFiles: RelocatedFile[];
+  /** Workspace-relative paths of files that were auto-claimed (unowned on disk, content identical) */
+  claimedFiles: string[];
 }
 
 // ============================================================================
@@ -699,6 +701,7 @@ export async function resolveConflictsForTargets(
   indexWriteCollector?: IndexWriteCollector
 ): Promise<ConflictResolutionResult> {
   const warnings: string[] = [];
+  const claimedFiles: string[] = [];
   const interactive = canPrompt ?? options.interactive ?? false;
   const isDryRun = Boolean(options.dryRun);
 
@@ -788,6 +791,7 @@ export async function resolveConflictsForTargets(
     if (contentToCompare !== undefined) {
       const contentDiffers = await hasContentDifference(absTarget, contentToCompare);
       if (!contentDiffers) {
+        claimedFiles.push(target.relPath);
         classifications.push({ type: 'none' });
         continue;
       }
@@ -955,6 +959,7 @@ export async function resolveConflictsForTargets(
     warnings,
     packageWasNamespaced: shouldNamespacePackage,
     namespaceDir: shouldNamespacePackage ? installingSlug : undefined,
-    relocatedFiles
+    relocatedFiles,
+    claimedFiles
   };
 }

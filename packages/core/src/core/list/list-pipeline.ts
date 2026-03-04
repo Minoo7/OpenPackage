@@ -10,9 +10,9 @@ import type { WorkspaceIndexPackage } from '../../types/workspace-index.js';
 import { logger } from '../../utils/logger.js';
 import { getTargetPath } from '../../utils/workspace-index-helpers.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
-import { arePackageNamesEquivalent } from '../../utils/package-name.js';
 import { scanUntrackedFiles, type UntrackedScanResult } from './untracked-files-scanner.js';
-import { getWorkspaceIndexPath } from '../../utils/workspace-index-yml.js';
+import { checkContentStatus } from './content-status-checker.js';
+import { isRegistryPath } from '../source-mutability.js';
 import { isPlatformId, getAllPlatforms, getPlatformDefinition } from '../platforms.js';
 import { normalizePlatforms } from '../platform/platform-mapper.js';
 import { DIR_TO_TYPE, RESOURCE_TYPE_ORDER, toPluralKey, type ResourceTypeId } from '../resources/resource-registry.js';
@@ -24,6 +24,7 @@ export interface ListFileMapping {
   source: string;
   target: string;
   exists: boolean;
+  contentStatus?: 'modified' | 'clean' | 'merged';
 }
 
 /**
@@ -58,6 +59,8 @@ export interface ListPackageReport {
   fileList?: ListFileMapping[];
   resourceGroups?: ListResourceGroup[];
   dependencies?: string[];
+  modifiedCount?: number;
+  isRegistryPackage?: boolean;
 }
 
 export interface ListTreeNode {
@@ -70,10 +73,8 @@ export interface ListPipelineOptions {
   includeFiles?: boolean;
   /** Build full recursive dependency tree */
   all?: boolean;
-  /** Filter to tracked view only */
-  tracked?: boolean;
-  /** Filter to untracked view only */
-  untracked?: boolean;
+  /** Show content change status (modified/clean) */
+  status?: boolean;
   /** Filter by platform names */
   platforms?: string[];
 }
@@ -295,7 +296,8 @@ async function checkPackageStatus(
   pkgName: string,
   entry: WorkspaceIndexPackage,
   includeFileList: boolean = false,
-  platformsFilter?: string[]
+  platformsFilter?: string[],
+  statusEnabled?: boolean
 ): Promise<ListPackageReport> {
   const totalTargets = entry.files
     ? Object.values(entry.files).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0)
@@ -321,11 +323,16 @@ async function checkPackageStatus(
     };
   }
 
+  // When status is enabled, we always need the file list to annotate
+  if (statusEnabled) {
+    includeFileList = true;
+  }
+
   // Check workspace file existence
   let totalFiles = 0;
   let existingFiles = 0;
   const fileList: ListFileMapping[] = [];
-  
+
   const filesMapping = entry.files || {};
   
   // Normalize platform filter
@@ -364,6 +371,28 @@ async function checkPackageStatus(
           exists: fileExists
         });
       }
+    }
+  }
+
+  // Content status comparison (when --status is active and source exists)
+  let modifiedCount: number | undefined;
+  let isRegistryPackageFlag: boolean | undefined;
+  if (statusEnabled && sourceExists) {
+    isRegistryPackageFlag = isRegistryPath(sourceRoot);
+    try {
+      const statusMap = await checkContentStatus(targetDir, sourceRoot, filesMapping);
+      let modified = 0;
+      for (const file of fileList) {
+        const key = `${file.source}::${file.target}`;
+        const cs = statusMap.get(key);
+        if (cs) {
+          file.contentStatus = cs;
+          if (cs === 'modified') modified++;
+        }
+      }
+      modifiedCount = modified;
+    } catch (error) {
+      logger.debug(`Content status check failed for ${pkgName}: ${error}`);
     }
   }
 
@@ -433,7 +462,9 @@ async function checkPackageStatus(
     existingFiles,
     fileList: includeFileList ? fileList : undefined,
     resourceGroups,
-    dependencies
+    dependencies,
+    modifiedCount,
+    isRegistryPackage: isRegistryPackageFlag
   };
 }
 
@@ -483,40 +514,10 @@ export async function runListPipeline(
   execContext: ExecutionContext,
   options: ListPipelineOptions = {}
 ): Promise<CommandResult<ListPipelineResult>> {
-  const { includeFiles = false, all = false, tracked = false, untracked = false, platforms } = options;
-  
+  const { includeFiles = false, all = false, status = false, platforms } = options;
+
   // Use targetDir for list operations
   const targetDir = execContext.targetDir;
-  const indexPath = getWorkspaceIndexPath(targetDir);
-
-  // Validate mutual exclusivity
-  if (tracked && untracked) {
-    throw new ValidationError('Cannot use --tracked and --untracked together.');
-  }
-
-  // For --untracked only, we just need the workspace index (not the full manifest)
-  if (untracked) {
-    if (!(await exists(indexPath))) {
-      throw new ValidationError(
-        `No workspace index found at ${indexPath}. Cannot scan for untracked files.`
-      );
-    }
-
-    const untrackedFiles = await scanUntrackedFiles(targetDir, platforms);
-
-    return {
-      success: true,
-      data: {
-        packages: [],
-        tree: [],
-        rootPackageNames: [],
-        trackedCount: 0,
-        missingCount: 0,
-        untrackedCount: untrackedFiles.totalFiles,
-        untrackedFiles
-      }
-    };
-  }
 
   // Regular list operation - require both index and manifest
   const openpkgDir = getLocalOpenPackageDir(targetDir);
@@ -565,7 +566,7 @@ export async function runListPipeline(
 
     let targetPackage: ListPackageReport;
     try {
-      targetPackage = await checkPackageStatus(targetDir, packageName, pkgEntry, true, platforms);
+      targetPackage = await checkPackageStatus(targetDir, packageName, pkgEntry, true, platforms, status);
       reports.push(targetPackage);
       reportMap.set(packageName, targetPackage);
     } catch (error) {
@@ -593,7 +594,7 @@ export async function runListPipeline(
       if (!depEntry) continue;
       
       try {
-        const depReport = await checkPackageStatus(targetDir, depName, depEntry, includeFiles, platforms);
+        const depReport = await checkPackageStatus(targetDir, depName, depEntry, includeFiles, platforms, status);
         reportMap.set(depName, depReport);
       } catch (error) {
         logger.debug(`Failed to load dependency ${depName}: ${error}`);
@@ -614,7 +615,7 @@ export async function runListPipeline(
             if (!nestedEntry) continue;
             
             try {
-              const nestedReport = await checkPackageStatus(targetDir, nestedDepName, nestedEntry, includeFiles, platforms);
+              const nestedReport = await checkPackageStatus(targetDir, nestedDepName, nestedEntry, includeFiles, platforms, status);
               reportMap.set(nestedDepName, nestedReport);
               
               if (nestedReport.dependencies && nestedReport.dependencies.length > 0) {
@@ -644,18 +645,16 @@ export async function runListPipeline(
     const trackedCount = reports.reduce((sum, r) => sum + r.existingFiles, 0);
     const missingCount = reports.reduce((sum, r) => sum + (r.totalFiles - r.existingFiles), 0);
 
-    // Scan untracked files unless --tracked flag is set
+    // Scan untracked files
     let untrackedFiles: UntrackedScanResult | undefined;
     let untrackedCount = 0;
-    if (!tracked) {
-      try {
-        untrackedFiles = await scanUntrackedFiles(targetDir, platforms);
-        untrackedCount = untrackedFiles.totalFiles;
-      } catch (error) {
-        logger.warn('Failed to scan untracked files', {
-          reason: error instanceof Error ? error.message : String(error),
-        });
-      }
+    try {
+      untrackedFiles = await scanUntrackedFiles(targetDir, platforms);
+      untrackedCount = untrackedFiles.totalFiles;
+    } catch (error) {
+      logger.warn('Failed to scan untracked files', {
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
 
     return {
@@ -667,7 +666,7 @@ export async function runListPipeline(
   // Check all packages and build reports (include workspace package so its resources are listed)
   for (const [pkgName, pkgEntry] of Object.entries(packages)) {
     try {
-      const report = await checkPackageStatus(targetDir, pkgName, pkgEntry, includeFiles, platforms);
+      const report = await checkPackageStatus(targetDir, pkgName, pkgEntry, includeFiles, platforms, status);
       reports.push(report);
       reportMap.set(pkgName, report);
     } catch (error) {
@@ -693,18 +692,16 @@ export async function runListPipeline(
   const trackedCount = reports.reduce((sum, r) => sum + r.existingFiles, 0);
   const missingCount = reports.reduce((sum, r) => sum + (r.totalFiles - r.existingFiles), 0);
 
-  // Scan untracked files unless --tracked flag is set
+  // Scan untracked files
   let untrackedFiles: UntrackedScanResult | undefined;
   let untrackedCount = 0;
-  if (!tracked) {
-    try {
-      untrackedFiles = await scanUntrackedFiles(targetDir, platforms);
-      untrackedCount = untrackedFiles.totalFiles;
-    } catch (error) {
-      logger.warn('Failed to scan untracked files', {
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
+  try {
+    untrackedFiles = await scanUntrackedFiles(targetDir, platforms);
+    untrackedCount = untrackedFiles.totalFiles;
+  } catch (error) {
+    logger.warn('Failed to scan untracked files', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
 
   return {

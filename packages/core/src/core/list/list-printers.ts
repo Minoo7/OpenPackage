@@ -1,5 +1,5 @@
 import type { ListPackageReport, ListTreeNode } from './list-pipeline.js';
-import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
+import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
 import { formatScopeBadge } from '../../utils/formatters.js';
 import type { ScopeResult, HeaderInfo } from './scope-data-collector.js';
 import type { ViewMetadataEntry } from './view-metadata.js';
@@ -28,6 +28,7 @@ const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
 const CYAN = '\x1b[36m';
+const YELLOW = '\x1b[33m';
 
 export function dim(text: string): string {
   return `${DIM}${text}${RESET}`;
@@ -41,6 +42,10 @@ function red(text: string): string {
   return `${RED}${text}${RESET}`;
 }
 
+function yellow(text: string): string {
+  return `${YELLOW}${text}${RESET}`;
+}
+
 export function sectionHeader(title: string, count: number): string {
   return `${cyan(`[${title}]`)} ${dim(`(${count})`)}`;
 }
@@ -49,7 +54,7 @@ export function sectionHeader(title: string, count: number): string {
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
-function formatPackageLine(pkg: ListPackageReport): string {
+function formatPackageLine(pkg: ListPackageReport, statusEnabled?: boolean): string {
   const version = pkg.version && pkg.version !== '0.0.0' ? `@${pkg.version}` : '';
 
   let stateSuffix = '';
@@ -57,7 +62,13 @@ function formatPackageLine(pkg: ListPackageReport): string {
     stateSuffix = dim(' (missing)');
   }
 
-  return `${pkg.name}${version}${stateSuffix}`;
+  // Show [N modified] for mutable packages with modifications
+  let statusTag = '';
+  if (statusEnabled && !pkg.isRegistryPackage && pkg.modifiedCount && pkg.modifiedCount > 0) {
+    statusTag = ' ' + yellow(`[${pkg.modifiedCount} modified]`);
+  }
+
+  return `${pkg.name}${version}${stateSuffix}${statusTag}`;
 }
 
 function formatFilePath(file: EnhancedFileMapping): string {
@@ -72,9 +83,10 @@ function formatFilePath(file: EnhancedFileMapping): string {
 // ---------------------------------------------------------------------------
 
 function printFileList(
-  files: { source: string; target: string; exists: boolean }[],
+  files: { source: string; target: string; exists: boolean; contentStatus?: string }[],
   prefix: string,
-  out: OutputPort
+  out: OutputPort,
+  statusEnabled?: boolean
 ): void {
   const sortedFiles = [...files].sort((a, b) => a.target.localeCompare(b.target));
 
@@ -82,9 +94,16 @@ function printFileList(
     const file = sortedFiles[i];
     const isLast = i === sortedFiles.length - 1;
     const connector = isLast ? '└── ' : '├── ';
-    const label = file.exists
-      ? dim(file.target)
-      : `${dim(file.target)} ${red('[MISSING]')}`;
+    let label: string;
+    if (!file.exists) {
+      label = `${dim(file.target)} ${red('[MISSING]')}`;
+    } else if (statusEnabled && file.contentStatus === 'modified') {
+      label = `${dim(file.target)} ${yellow('[modified]')}`;
+    } else if (statusEnabled && file.contentStatus === 'merged') {
+      label = `${dim(file.target)} ${dim('[merged]')}`;
+    } else {
+      label = dim(file.target);
+    }
     out.info(`${prefix}${connector}${label}`);
   }
 }
@@ -104,7 +123,8 @@ function printDepTreeNode(
   prefix: string,
   isLast: boolean,
   showFiles: boolean,
-  out: OutputPort
+  out: OutputPort,
+  statusEnabled?: boolean
 ): void {
   const hasChildren = node.children.length > 0;
   const hasFiles = showFiles && node.report.fileList && node.report.fileList.length > 0;
@@ -115,15 +135,15 @@ function printDepTreeNode(
     : (hasBranches ? '├─┬ ' : '├── ');
   const childPrefix = getChildPrefix(prefix, isLast);
 
-  out.info(`${prefix}${connector}${formatPackageLine(node.report)}`);
+  out.info(`${prefix}${connector}${formatPackageLine(node.report, statusEnabled)}`);
 
   if (hasFiles) {
-    printFileList(node.report.fileList!, childPrefix, out);
+    printFileList(node.report.fileList!, childPrefix, out, statusEnabled);
   }
 
   node.children.forEach((child, index) => {
     const isLastChild = index === node.children.length - 1;
-    printDepTreeNode(child, childPrefix, isLastChild, showFiles, out);
+    printDepTreeNode(child, childPrefix, isLastChild, showFiles, out, statusEnabled);
   });
 }
 
@@ -131,7 +151,8 @@ export function printDepsView(
   results: Array<{ scope: ResourceScope; result: ScopeResult }>,
   showFiles: boolean,
   headerInfo?: HeaderInfo,
-  output?: OutputPort
+  output?: OutputPort,
+  statusEnabled?: boolean
 ): void {
   const out = output ?? resolveOutput();
   const packageMap = new Map<string, DepsPackageEntry>();
@@ -186,7 +207,7 @@ export function printDepsView(
   // If workspace was excluded, show its files under the header when -f is used.
   // Use empty prefix so workspace files appear as siblings of dep entries.
   if (workspaceEntry && showFiles && workspaceEntry.report.fileList && workspaceEntry.report.fileList.length > 0) {
-    printFileList(workspaceEntry.report.fileList, '', out);
+    printFileList(workspaceEntry.report.fileList, '', out, statusEnabled);
   }
 
   for (let i = 0; i < entries.length; i++) {
@@ -202,17 +223,17 @@ export function printDepsView(
       : (hasBranches ? '├─┬ ' : '├── ');
     const childPrefix = getChildPrefix('', isLast);
 
-    out.info(`${connector}${formatPackageLine(entry.report)} ${scopeBadge}`);
+    out.info(`${connector}${formatPackageLine(entry.report, statusEnabled)} ${scopeBadge}`);
 
     // Show flat file list for the package when -f is requested
     if (hasFiles) {
-      printFileList(entry.report.fileList!, childPrefix, out);
+      printFileList(entry.report.fileList!, childPrefix, out, statusEnabled);
     }
 
     for (let ci = 0; ci < entry.children.length; ci++) {
       const child = entry.children[ci];
       const isLastChild = ci === entry.children.length - 1;
-      printDepTreeNode(child, childPrefix, isLastChild, showFiles, out);
+      printDepTreeNode(child, childPrefix, isLastChild, showFiles, out, statusEnabled);
     }
   }
 }
@@ -225,7 +246,8 @@ export function printResourcesView(
   groups: EnhancedResourceGroup[],
   showFiles: boolean,
   headerInfo?: HeaderInfo,
-  output?: OutputPort
+  output?: OutputPort,
+  statusEnabled?: boolean
 ): void {
   const out = output ?? resolveOutput();
   // Print header showing workspace/package name and path if provided
@@ -252,6 +274,20 @@ export function printResourcesView(
         return Array.from(packages)
           .sort()
           .map((pkg) => dim(`(${pkg})`));
+      }
+    }),
+    ...(statusEnabled && {
+      getFileStatusTag: (file: EnhancedFileMapping) => {
+        if (file.status === 'modified') return yellow('[modified]');
+        if (file.status === 'untracked') return dim('[untracked]');
+        if (file.contentStatus === 'merged') return dim('[merged]');
+        return undefined;
+      },
+      getResourceStatusTag: (resource: EnhancedResourceInfo) => {
+        if (resource.status === 'modified') return yellow('[modified]');
+        if (resource.status === 'untracked') return dim('[untracked]');
+        if (resource.status === 'missing') return red('[MISSING]');
+        return undefined;
       }
     })
   };

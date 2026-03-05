@@ -12,6 +12,7 @@ import type { SaveToSourceOptions } from '@opkg/core/core/save/save-to-source-pi
 import { normalizeSaveOptions } from '@opkg/core/core/save/save-options-normalizer.js';
 import { toSaveJsonOutput } from '@opkg/core/core/save/save-result-reporter.js';
 import { runDirectSaveFlow } from '@opkg/core/core/save/direct-save-flow.js';
+import { runSaveAllFlow } from '@opkg/core/core/save/save-all-flow.js';
 import { createCliExecutionContext } from '../cli/context.js';
 import { resolveOutput } from '@opkg/core/core/ports/resolve.js';
 import { printJsonSuccess, printJsonError } from '../utils/json-output.js';
@@ -22,11 +23,8 @@ interface SaveCommandOptions extends SaveToSourceOptions {
 }
 
 export async function setupSaveCommand(args: any[]): Promise<void> {
-  const [nameArg, options, command] = args as [string, SaveCommandOptions, Command];
+  const [nameArg, options, command] = args as [string | undefined, SaveCommandOptions, Command];
   const programOpts = command.parent?.opts() || {};
-  const traverseOpts = {
-    programOpts,
-  };
 
   // Normalize options at CLI boundary (validates --conflicts, aliases --force, etc.)
   const normalized = normalizeSaveOptions(options);
@@ -38,11 +36,41 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
     prefer: normalized.prefer,
   };
 
-  const interactive = !nameArg;
+  // ── Save-all path (no argument) ──────────────────────────────────────
+  if (!nameArg) {
+    const ctx = await createCliExecutionContext({
+      cwd: programOpts.cwd,
+      interactive: false,
+      outputMode: 'plain',
+    });
+
+    const allResult = await runSaveAllFlow(pipelineOptions, ctx);
+
+    if (options.json) {
+      const { totals } = allResult.json;
+      if (totals.packagesWithChanges === 0 && totals.packagesFailed > 0) {
+        printJsonError(allResult.summary);
+      } else {
+        printJsonSuccess(allResult.json);
+      }
+    } else {
+      const out = resolveOutput(ctx);
+      const { totals } = allResult.json;
+      if (totals.packagesWithChanges === 0 && totals.packagesFailed > 0) {
+        throw new Error(allResult.summary);
+      }
+      out.success(allResult.summary);
+    }
+    return;
+  }
+
+  // ── Single-target path (existing behavior) ───────────────────────────
+  const traverseOpts = { programOpts };
+  const interactive = false;
   const ctx = await createCliExecutionContext({
     cwd: programOpts.cwd,
     interactive,
-    outputMode: interactive ? 'rich' : 'plain',
+    outputMode: 'plain',
   });
   const result = await runDirectSaveFlow(nameArg, pipelineOptions, traverseOpts, ctx);
 

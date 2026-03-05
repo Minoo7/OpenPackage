@@ -172,8 +172,13 @@ export async function runDirectSaveFlow(
 
 /**
  * Save all files for a package (equivalent to the old full-package save).
+ *
+ * Encapsulates the full per-package lifecycle:
+ * validate → detect new files → execute pipeline → cleanup.
+ *
+ * Used by both `runDirectSaveFlow` (single-target) and `runSaveAllFlow` (bulk).
  */
-async function savePackage(
+export async function savePackage(
   packageName: string,
   targetDir: string,
   options: SaveToSourceOptions,

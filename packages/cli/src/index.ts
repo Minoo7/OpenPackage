@@ -158,7 +158,7 @@ program
 
 program
   .command('save')
-  .argument('<resource-spec>', 'resource or package name to save workspace changes for')
+  .argument('[resource-spec]', 'resource or package name (omit to save all modified packages)')
   .description('Save workspace edits back to mutable package source')
   .option('-f, --force', 'auto-select newest when conflicts occur')
   .option('--dry-run', 'preview changes without writing to source')

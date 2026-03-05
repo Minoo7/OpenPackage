@@ -12,14 +12,16 @@ import type { SaveToSourceOptions } from '@opkg/core/core/save/save-to-source-pi
 import { normalizeSaveOptions } from '@opkg/core/core/save/save-options-normalizer.js';
 import { toSaveJsonOutput } from '@opkg/core/core/save/save-result-reporter.js';
 import { runDirectSaveFlow } from '@opkg/core/core/save/direct-save-flow.js';
-import { runSaveAllFlow } from '@opkg/core/core/save/save-all-flow.js';
+import { runSaveAllFlow, discoverModifiedPackages } from '@opkg/core/core/save/save-all-flow.js';
 import { createCliExecutionContext } from '../cli/context.js';
 import { resolveOutput } from '@opkg/core/core/ports/resolve.js';
+import type { OutputPort } from '@opkg/core/core/ports/output.js';
 import { printJsonSuccess, printJsonError } from '../utils/json-output.js';
 
 interface SaveCommandOptions extends SaveToSourceOptions {
   force?: boolean;
   json?: boolean;
+  global?: boolean;
 }
 
 export async function setupSaveCommand(args: any[]): Promise<void> {
@@ -39,6 +41,7 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
   // ── Save-all path (no argument) ──────────────────────────────────────
   if (!nameArg) {
     const ctx = await createCliExecutionContext({
+      global: options.global,
       cwd: programOpts.cwd,
       interactive: false,
       outputMode: 'plain',
@@ -60,12 +63,19 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
         throw new Error(allResult.summary);
       }
       out.success(allResult.summary);
+
+      if (totals.packagesProcessed === 0) {
+        await printOtherScopeHint(options.global, programOpts.cwd, out);
+      }
     }
     return;
   }
 
   // ── Single-target path (existing behavior) ───────────────────────────
-  const traverseOpts = { programOpts };
+  const traverseOpts = {
+    programOpts,
+    ...(options.global ? { globalOnly: true as const } : { projectOnly: true as const }),
+  };
   const interactive = false;
   const ctx = await createCliExecutionContext({
     cwd: programOpts.cwd,
@@ -111,5 +121,30 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
     if (result.result.data?.message) {
       out.success(result.result.data.message);
     }
+  }
+}
+
+async function printOtherScopeHint(
+  isGlobal: boolean | undefined,
+  cwd: string | undefined,
+  out: OutputPort,
+): Promise<void> {
+  try {
+    const otherCtx = await createCliExecutionContext({
+      global: !isGlobal,
+      cwd,
+      interactive: false,
+      outputMode: 'plain',
+    });
+    const modified = await discoverModifiedPackages(otherCtx.targetDir);
+    if (modified.length > 0) {
+      const scopeLabel = isGlobal ? 'project' : 'global';
+      const flag = isGlobal ? '' : ' -g';
+      out.info(
+        `Hint: ${modified.length} modified package(s) in ${scopeLabel} scope. Use \`opkg save${flag}\` to save them.`,
+      );
+    }
+  } catch {
+    // Hint is best-effort — silently ignore failures
   }
 }

@@ -86,7 +86,12 @@ export async function setupInstallCommand(args: any[]): Promise<void> {
 
   // JSON output path
   if (options.json) {
-    printJson(result);
+    printJson({
+      success: result.success,
+      data: result.data ?? null,
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+    });
     if (!result.success) {
       process.exitCode = 1;
     }

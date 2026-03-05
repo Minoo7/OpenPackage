@@ -14,7 +14,7 @@ import { toSaveJsonOutput } from '@opkg/core/core/save/save-result-reporter.js';
 import { runDirectSaveFlow } from '@opkg/core/core/save/direct-save-flow.js';
 import { createCliExecutionContext } from '../cli/context.js';
 import { resolveOutput } from '@opkg/core/core/ports/resolve.js';
-import { printJson } from '../utils/json-output.js';
+import { printJsonSuccess, printJsonError } from '../utils/json-output.js';
 
 interface SaveCommandOptions extends SaveToSourceOptions {
   json?: boolean;
@@ -49,19 +49,20 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
   // JSON output path
   if (options.json) {
     if (result.cancelled) {
-      printJson({ success: false, cancelled: true });
+      printJsonSuccess({ cancelled: true });
       return;
     }
     if (result.result) {
       if (!result.result.success) {
-        printJson({ success: false, error: result.result.error });
-        process.exitCode = 1;
+        printJsonError(result.result.error || 'Save operation failed');
         return;
       }
       if (result.result.data?.report) {
-        printJson(toSaveJsonOutput(result.result.data.report));
+        const report = toSaveJsonOutput(result.result.data.report);
+        const { success: _, ...data } = report;
+        printJsonSuccess(data);
       } else {
-        printJson({ success: true, message: result.result.data?.message });
+        printJsonSuccess({ message: result.result.data?.message });
       }
     }
     return;

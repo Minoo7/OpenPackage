@@ -2,6 +2,7 @@ import { FILE_PATTERNS } from '../../constants/index.js';
 import { calculateConvertedHash, convertSourceToWorkspace, ensureComparableHash } from './save-conversion-helper.js';
 import { extractPackageContribution, extractContentByKeys } from './save-merge-extractor.js';
 import { logger } from '../../utils/logger.js';
+import type { ContentStatus } from '../list/content-status-checker.js';
 import type { SaveCandidate, SaveCandidateGroup, ResolutionStrategy, SaveConflictStrategy } from './save-types.js';
 
 /**
@@ -63,6 +64,9 @@ export interface ConflictAnalysis {
 
   /** Reason a conflict was skipped (set when --conflicts skip/auto or --prefer miss) */
   skippedReason?: 'conflict-skipped' | 'no-preferred-platform';
+
+  /** Content status from three-way comparison (if available) */
+  contentStatus?: ContentStatus;
 }
 
 /**
@@ -73,6 +77,8 @@ export interface AnalyzeGroupOptions {
   conflictStrategy?: SaveConflictStrategy;
   /** Preferred platform (from --prefer flag) */
   preferPlatform?: string;
+  /** Status map from three-way comparison (for annotating analyses) */
+  statusMap?: Map<string, ContentStatus>;
 }
 
 /**
@@ -111,7 +117,21 @@ export async function analyzeGroup(
   const hasLocal = !!group.local;
   const workspaceCandidates = group.workspace;
   const workspaceCandidateCount = workspaceCandidates.length;
-  
+
+  // Look up content status from the status map (if available)
+  let groupContentStatus: ContentStatus | undefined;
+  if (options.statusMap && workspaceCandidates.length > 0) {
+    // Try to find a status for any workspace candidate in the group
+    for (const candidate of workspaceCandidates) {
+      const key = `${registryPath}::${candidate.displayPath}`;
+      const status = options.statusMap.get(key);
+      if (status) {
+        groupContentStatus = status;
+        break;
+      }
+    }
+  }
+
   // Check if this is a root file (AGENTS.md or similar)
   // Root files may have special handling in some contexts
   const isRootFile = 
@@ -139,7 +159,8 @@ export async function analyzeGroup(
       localMatchesWorkspace: false,
       isRootFile,
       hasPlatformCandidates: false,
-      recommendedStrategy: 'skip'
+      recommendedStrategy: 'skip',
+      contentStatus: groupContentStatus
     };
   }
   
@@ -172,7 +193,8 @@ export async function analyzeGroup(
         localMatchesWorkspace: true,
         isRootFile,
         hasPlatformCandidates,
-        recommendedStrategy: 'skip'
+        recommendedStrategy: 'skip',
+        contentStatus: groupContentStatus
       };
     }
   }
@@ -188,7 +210,8 @@ export async function analyzeGroup(
       localMatchesWorkspace: true,
       isRootFile,
       hasPlatformCandidates,
-      recommendedStrategy: 'skip'
+      recommendedStrategy: 'skip',
+      contentStatus: groupContentStatus
     };
   }
   
@@ -203,7 +226,8 @@ export async function analyzeGroup(
       localMatchesWorkspace: false,
       isRootFile,
       hasPlatformCandidates,
-      recommendedStrategy: 'write-single'
+      recommendedStrategy: 'write-single',
+      contentStatus: groupContentStatus
     };
   }
   
@@ -223,7 +247,8 @@ export async function analyzeGroup(
         localMatchesWorkspace: false,
         isRootFile,
         hasPlatformCandidates,
-        recommendedStrategy: 'write-single'
+        recommendedStrategy: 'write-single',
+        contentStatus: groupContentStatus
       };
     }
     // No match for preferred platform — fall through to --conflicts
@@ -262,7 +287,8 @@ export async function analyzeGroup(
     isRootFile,
     hasPlatformCandidates,
     recommendedStrategy,
-    skippedReason
+    skippedReason,
+    contentStatus: groupContentStatus
   };
 }
 
@@ -364,57 +390,6 @@ async function deduplicateCandidatesWithMerge(
 
   logger.debug(`Deduplication: ${candidates.length} → ${unique.length} unique candidates`);
   return unique;
-}
-
-/**
- * Deduplicate candidates by converted content hash (sync version for backward compatibility)
- * 
- * This is a simplified synchronous version that doesn't handle merge extraction.
- * Used by existing tests. For production code, use the merge-aware async version
- * via analyzeGroup.
- * 
- * @deprecated For backward compatibility with tests only.
- * @param candidates - Array of candidates to deduplicate
- * @returns Array of candidates with unique raw content hashes
- */
-export function deduplicateCandidates(
-  candidates: SaveCandidate[]
-): SaveCandidate[] {
-  const seen = new Set<string>();
-  const unique: SaveCandidate[] = [];
-  
-  for (const candidate of candidates) {
-    const hash = candidate.contentHash;
-    
-    if (seen.has(hash)) {
-      continue;
-    }
-    seen.add(hash);
-    unique.push(candidate);
-  }
-  
-  return unique;
-}
-
-/**
- * Check if workspace content differs from local source
- * 
- * Returns true if any workspace candidate has different content than the local source.
- * This is a simple helper for determining if a save operation would change anything.
- * 
- * @param local - The local (source) candidate, or undefined if none exists
- * @param workspace - Array of workspace candidates
- * @returns True if any workspace content differs from local
- */
-export function hasContentDifference(
-  local: SaveCandidate | undefined,
-  workspace: SaveCandidate[]
-): boolean {
-  if (!local) return true; // No local means creation, which is a difference
-  if (workspace.length === 0) return false; // No workspace means no change
-  
-  // Check if any workspace candidate differs from local
-  return workspace.some(w => w.contentHash !== local.contentHash);
 }
 
 /**

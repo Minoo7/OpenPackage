@@ -32,7 +32,7 @@ function validateSaveConflictStrategy(value: string | undefined): SaveConflictSt
  * - Passes through --prefer and --dry-run
  */
 export function normalizeSaveOptions(
-  options: SaveToSourceOptions & { conflicts?: string; json?: boolean }
+  options: SaveToSourceOptions & { force?: boolean; conflicts?: string; json?: boolean }
 ): NormalizedSaveOptions {
   // Validate --conflicts strategy
   const explicitConflicts = validateSaveConflictStrategy(options.conflicts as string | undefined);

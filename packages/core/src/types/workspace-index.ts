@@ -25,10 +25,16 @@ export interface WorkspaceIndexFileMapping {
   keys?: string[];
 
   /**
-   * xxhash3 of the content written at install time.
-   * Used by `list --status` to detect modifications without re-reading source files.
+   * xxhash3 of the content written to the workspace at install time.
+   * Used by `list --status` to detect workspace-side modifications.
    */
   hash?: string;
+
+  /**
+   * xxhash3 of the raw source file at install time (before any transforms).
+   * Used by `list --status` to detect source-side changes.
+   */
+  sourceHash?: string;
 }
 
 export interface WorkspaceIndexPackage {

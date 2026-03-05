@@ -17,6 +17,7 @@ import { resolveOutput } from '@opkg/core/core/ports/resolve.js';
 import { printJsonSuccess, printJsonError } from '../utils/json-output.js';
 
 interface SaveCommandOptions extends SaveToSourceOptions {
+  force?: boolean;
   json?: boolean;
 }
 
@@ -32,7 +33,6 @@ export async function setupSaveCommand(args: any[]): Promise<void> {
 
   // Build pipeline options from normalized values
   const pipelineOptions: SaveToSourceOptions = {
-    force: options.force,
     dryRun: normalized.dryRun,
     conflicts: normalized.conflicts,
     prefer: normalized.prefer,

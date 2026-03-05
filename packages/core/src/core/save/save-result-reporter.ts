@@ -16,7 +16,7 @@
 
 import type { CommandResult } from '../../types/index.js';
 import type { ConflictAnalysis } from './save-conflict-analyzer.js';
-import type { WriteResult } from './save-types.js';
+import type { WriteResult, StatusSummary } from './save-types.js';
 
 /**
  * SaveReport contains aggregated save operation results
@@ -63,6 +63,21 @@ export interface SaveReport {
 
   /** All write results (for detailed reporting) */
   writeResults: WriteResult[];
+
+  /** Number of files that were already clean (skipped by pre-filter) */
+  filesClean: number;
+
+  /** Number of files that were outdated (source updated, skipped) */
+  filesOutdated: number;
+
+  /** Number of files that diverged (both sides changed) */
+  filesDiverged: number;
+
+  /** Paths of outdated files (for user guidance) */
+  outdatedFilePaths: string[];
+
+  /** Paths of diverged files (for user awareness) */
+  divergedFilePaths: string[];
 }
 
 /**
@@ -80,7 +95,8 @@ export function buildSaveReport(
   packageName: string,
   analyses: ConflictAnalysis[],
   allWriteResults: WriteResult[][],
-  dryRun?: boolean
+  dryRun?: boolean,
+  statusSummary?: StatusSummary
 ): SaveReport {
   // Count groups
   const totalGroups = analyses.length;
@@ -91,8 +107,8 @@ export function buildSaveReport(
   // Flatten write results
   const flatResults = allWriteResults.flat();
 
-  // Count successful writes
-  const successfulWrites = flatResults.filter(r => r.success);
+  // Count successful writes (exclude 'skip' — source already had correct content)
+  const successfulWrites = flatResults.filter(r => r.success && r.operation.operation !== 'skip');
   const filesSaved = successfulWrites.length;
 
   // Count created vs updated
@@ -130,6 +146,13 @@ export function buildSaveReport(
       error: r.error || new Error('Unknown write error')
     }));
 
+  // Status summary fields
+  const filesClean = statusSummary?.cleanFileCount ?? 0;
+  const filesOutdated = statusSummary?.outdatedFiles.length ?? 0;
+  const filesDiverged = statusSummary?.divergedFiles.length ?? 0;
+  const outdatedFilePaths = statusSummary?.outdatedFiles ?? [];
+  const divergedFilePaths = statusSummary?.divergedFiles ?? [];
+
   return {
     packageName,
     dryRun,
@@ -143,7 +166,12 @@ export function buildSaveReport(
     conflictsSkipped: skippedConflicts.length,
     skippedConflicts,
     errors,
-    writeResults: flatResults
+    writeResults: flatResults,
+    filesClean,
+    filesOutdated,
+    filesDiverged,
+    outdatedFilePaths,
+    divergedFilePaths
   };
 }
 
@@ -225,7 +253,15 @@ export function formatSaveMessage(report: SaveReport): string {
   const prefix = report.dryRun ? '(dry-run) Would save' : 'Saved';
 
   if (report.filesSaved === 0 && report.errors.length === 0) {
-    return `${prefix} ${report.packageName}\n  No changes detected`;
+    const noChangeParts = [`${prefix} ${report.packageName}\n  No changes detected`];
+    if (report.filesClean > 0) {
+      noChangeParts.push(`  ${report.filesClean} file(s) already clean`);
+    }
+    if (report.filesOutdated > 0) {
+      noChangeParts.push(`  ${report.filesOutdated} file(s) outdated (source updated since install)`);
+      noChangeParts.push(`  Run 'opkg install ${report.packageName}' to sync latest source changes`);
+    }
+    return noChangeParts.join('\n');
   }
 
   lines.push(`${prefix} ${report.packageName}`);
@@ -238,6 +274,14 @@ export function formatSaveMessage(report: SaveReport): string {
   if (report.filesUpdated > 0) {
     const verb = report.dryRun ? 'would be updated' : 'updated';
     lines.push(`  ${report.filesUpdated} file(s) ${verb}`);
+  }
+
+  if (report.filesClean > 0) {
+    lines.push(`  ${report.filesClean} file(s) already clean`);
+  }
+
+  if (report.filesOutdated > 0) {
+    lines.push(`  ${report.filesOutdated} file(s) outdated (source updated since install)`);
   }
 
   if (report.platformSpecificFiles > 0) {
@@ -287,6 +331,15 @@ export function formatSaveMessage(report: SaveReport): string {
     }
   }
 
+  if (report.outdatedFilePaths.length > 0) {
+    lines.push('');
+    lines.push('  Outdated files (source updated since install):');
+    for (const filePath of report.outdatedFilePaths) {
+      lines.push(`   ├── ${filePath}`);
+    }
+    lines.push(`  Run 'opkg install ${report.packageName}' to sync latest source changes`);
+  }
+
   if (report.filesSaved > 0 && !report.dryRun) {
     lines.push('');
     lines.push('💡 Changes saved to package source.');
@@ -314,6 +367,13 @@ export function toSaveJsonOutput(report: SaveReport): Record<string, unknown> {
       filesUpdated: report.filesUpdated,
       platformSpecificFiles: report.platformSpecificFiles,
       conflictsSkipped: report.conflictsSkipped,
+      filesClean: report.filesClean,
+      filesOutdated: report.filesOutdated,
+      filesDiverged: report.filesDiverged,
+    },
+    status: {
+      outdatedFiles: report.outdatedFilePaths,
+      divergedFiles: report.divergedFilePaths,
     },
     files: report.writeResults
       .filter(r => r.success)

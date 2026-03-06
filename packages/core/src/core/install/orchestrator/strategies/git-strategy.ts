@@ -73,21 +73,10 @@ export class GitInstallStrategy extends BaseInstallStrategy {
       (context.source as any)._commitSha = loaded.sourceMetadata.commitSha;
     }
     
-    // Check for marketplace (early exit)
-    if (loaded.pluginMetadata?.pluginType === 'marketplace') {
-      return this.createMarketplaceResult(context);
-    }
-    
-    // Process base detection (centralized)
+    // Process base detection (always — needed for basePath in convenience filters)
     const baseResult = applyBaseDetection(context, loaded);
-    if (baseResult.specialHandling === 'marketplace') {
-      return this.createMarketplaceResult(context);
-    }
-    if (baseResult.specialHandling === 'ambiguous') {
-      return this.createAmbiguousResult(context, baseResult.ambiguousMatches ?? []);
-    }
-    
-    // Apply resource path scoping
+
+    // Apply resource path scoping (always, if resourcePath)
     const resourcePath = context.source.resourcePath;
     if (resourcePath) {
       await computePathScoping(context, loaded, resourcePath);
@@ -96,17 +85,27 @@ export class GitInstallStrategy extends BaseInstallStrategy {
     // Populate root resolved package so the pipeline can skip re-loading.
     context.resolvedPackages = [createResolvedPackageFromLoaded(loaded, context)];
 
-    // Apply convenience filters (--agents, --skills, etc.)
+    // Convenience filters FIRST — explicit user intent takes priority over source type
     if (options.agents?.length || options.skills?.length || options.rules?.length || options.commands?.length) {
       return this.handleConvenienceFilters(context, loaded, options);
     }
-    
+
+    // Now handle marketplace (only when no convenience filters)
+    if (loaded.pluginMetadata?.pluginType === 'marketplace' || baseResult.specialHandling === 'marketplace') {
+      return this.createMarketplaceResult(context);
+    }
+
+    // Ambiguous base
+    if (baseResult.specialHandling === 'ambiguous') {
+      return this.createAmbiguousResult(context, baseResult.ambiguousMatches ?? []);
+    }
+
     // Warn about unused --plugins flag
     if (options.plugins?.length && !options.agents && !options.skills) {
       const out = resolveOutput(execContext);
       out.warn('--plugins flag is only used with marketplace sources. Ignoring.');
     }
-    
+
     return this.createNormalResult(context);
   }
   

@@ -102,6 +102,20 @@ export { toSaveJsonOutput } from './core/save/save-result-reporter.js';
 export { runSetPipeline } from './core/set/set-pipeline.js';
 
 // ============================================================================
+// Sync Pipeline
+// ============================================================================
+
+export { runSyncPipeline, runSyncAllPipeline } from './core/sync/sync-pipeline.js';
+export { normalizeSyncOptions } from './core/sync/sync-options-normalizer.js';
+export type {
+  SyncOptions,
+  SyncDirection,
+  SyncConflictStrategy,
+  SyncAllResult,
+  SyncPackageResult,
+} from './core/sync/sync-types.js';
+
+// ============================================================================
 // Add / Remove Pipelines
 // ============================================================================
 

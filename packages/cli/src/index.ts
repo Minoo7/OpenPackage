@@ -91,7 +91,7 @@ program
       // All commands section - ultra compact
       output += 'All commands:\n\n';
       output += '    install, uninstall, list,\n';
-      output += '    new, add, remove, save, set,\n';
+      output += '    new, add, remove, save, sync, set,\n';
       output += '    publish, unpublish, search, view, which,\n';
       output += '    login, logout, config\n\n';
       
@@ -169,6 +169,23 @@ program
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupSaveCommand } = await import('./commands/save.js');
     await setupSaveCommand(args);
+  }));
+
+program
+  .command('sync')
+  .argument('[target]', 'package or resource name (omit to sync all)')
+  .description('Sync workspace and source (bidirectional update)')
+  .option('--push', 'only push (workspace to source)')
+  .option('--pull', 'only pull (source to workspace)')
+  .option('--conflicts <strategy>', 'conflict resolution: workspace, source, skip, or auto')
+  .option('-f, --force', 'alias for --conflicts workspace')
+  .option('--dry-run', 'preview without writing')
+  .option('--json', 'output results as JSON')
+  .option('-g, --global', 'global scope')
+  .option('--platforms <platforms...>', 'filter by platforms')
+  .action(withErrorHandling(async (...args: any[]) => {
+    const { setupSyncCommand } = await import('./commands/sync.js');
+    await setupSyncCommand(args);
   }));
 
 program

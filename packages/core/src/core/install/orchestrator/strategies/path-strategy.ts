@@ -67,11 +67,7 @@ export class PathInstallStrategy extends BaseInstallStrategy {
     context.source.pluginMetadata = loaded.pluginMetadata;
     context.resolvedPackages = [createResolvedPackageFromLoaded(loaded, context)];
 
-    if (loaded.pluginMetadata?.pluginType === 'marketplace') {
-      return this.createMarketplaceResult(context);
-    }
-
-    // Apply convenience filters (--agents, --skills, etc.) - same as git/registry strategies
+    // Convenience filters take priority over marketplace routing
     if (options.agents?.length || options.skills?.length || options.rules?.length || options.commands?.length) {
       const convenienceOptions = {
         agents: options.agents,
@@ -81,6 +77,10 @@ export class PathInstallStrategy extends BaseInstallStrategy {
       };
       const resourceContexts = await runConvenienceFilterInstall(context, loaded, convenienceOptions);
       return this.createMultiResourceResult(context, resourceContexts);
+    }
+
+    if (loaded.pluginMetadata?.pluginType === 'marketplace') {
+      return this.createMarketplaceResult(context);
     }
 
     return this.createNormalResult(context);

@@ -161,9 +161,9 @@ export class InstallOrchestrator {
     // all ports are locked for the lifetime of the command.
     if (execContext.commitOutputMode) {
       const needsRich =
+        (policy.mode === 'always' && options.interactive) ||
         (specialHandling === 'marketplace' && !options.plugins?.length && policy.canPrompt(PromptTier.Required)) ||
-        (specialHandling === 'ambiguous' && policy.canPrompt(PromptTier.Required)) ||
-        (policy.mode === 'always' && options.interactive);
+        (specialHandling === 'ambiguous' && policy.canPrompt(PromptTier.Required));
 
       if (needsRich) {
         execContext.commitOutputMode('rich');
@@ -172,21 +172,23 @@ export class InstallOrchestrator {
 
     const out = resolveOutput(execContext);
 
+    // Interactive mode takes priority — discovers ALL directory resources
+    // regardless of whether the source is also a marketplace
+    if (policy.mode === 'always' && options.interactive) {
+      return this.handleList(context, options, execContext);
+    }
+
     switch (specialHandling) {
       case 'marketplace':
         return this.handleMarketplace(result, options, execContext, policy, out);
-      
+
       case 'ambiguous':
         return this.handleAmbiguous(result, options, execContext, policy);
-      
+
       case 'multi-resource':
         return this.handleMultiResource(result, options, execContext, policy);
-      
+
       default: {
-        // Handle --interactive option (interactive resource selection)
-        if (policy.mode === 'always' && options.interactive) {
-          return this.handleList(context, options, execContext);
-        }
         
         // Subsumption is handled centrally by the pipeline's subsumption phase
         

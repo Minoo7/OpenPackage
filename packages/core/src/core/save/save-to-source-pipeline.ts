@@ -1,15 +1,13 @@
 /**
  * Save To Source Pipeline
  *
- * This module orchestrates the complete save operation, integrating all phases:
- * - Phase 1: Validation
- * - Phase 2: Candidate Discovery & Grouping
- * - Phase 3: Platform Pruning & Filtering
- * - Phase 4: Conflict Analysis & Resolution
- * - Phase 5: File Writes
- * - Phase 6: Result Reporting
- *
- * This is the main entry point for the enhanced save command.
+ * Core save pipeline used by sync's push executor. Phases:
+ * - Status pre-filter (skip clean/outdated)
+ * - Candidate Discovery & Grouping
+ * - Platform Pruning & Filtering
+ * - Conflict Analysis & Resolution
+ * - File Writes
+ * - Result Reporting
  *
  * @module save-to-source-pipeline
  */
@@ -19,9 +17,7 @@ import path from 'path';
 import type { CommandResult } from '../../types/index.js';
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
-import { assertMutableSourceOrThrow } from '../source-mutability.js';
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../utils/workspace-index-yml.js';
-import { resolvePackageSource } from '../source-resolution/resolve-package-source.js';
 import { logger } from '../../utils/logger.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
 import { buildCandidates, materializeLocalCandidate } from './save-candidate-builder.js';
@@ -31,12 +27,10 @@ import { normalizeSaveOptions } from './save-options-normalizer.js';
 import { executeResolution } from './save-resolution-executor.js';
 import { pruneExistingPlatformCandidates } from './save-platform-handler.js';
 import { writeResolution } from './save-write-coordinator.js';
-import { clearConversionCache, initSharedTempDir, cleanupSharedTempDir } from './save-conversion-helper.js';
 import {
   buildSaveReport,
   createCommandResult,
   createSuccessResult,
-  createErrorResult
 } from './save-result-reporter.js';
 import { checkContentStatus } from '../list/content-status-checker.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
@@ -58,64 +52,9 @@ export interface SaveToSourceOptions {
 }
 
 /**
- * Validation result structure
- */
-export interface ValidationResult {
-  valid: boolean;
-  cwd?: string;
-  packageRoot?: string;
-  filesMapping?: Record<string, (string | WorkspaceIndexFileMapping)[]>;
-  error?: string;
-}
-
-/**
- * Run the complete save-to-source pipeline
- *
- * This is the main orchestrator function that coordinates all phases
- * of the save operation:
- *
- * 1. **Validate preconditions**: Check package exists, is mutable, has files
- * 2. **Build candidates**: Discover files in workspace and source
- * 3. **Group candidates**: Organize by registry path
- * 4. **Prune platform candidates**: Remove candidates with existing platform files
- * 5. **Filter active groups**: Keep only groups with workspace changes
- * 6. **Analyze & resolve**: Classify conflicts and execute resolution strategies
- * 7. **Write files**: Execute file write operations
- * 8. **Report results**: Build and return comprehensive report
- *
- * @param packageName - Package name to save
- * @param options - Save options (force mode, etc.)
- * @returns CommandResult with success status and report data
- */
-export async function runSaveToSourcePipeline(
-  packageName: string | undefined,
-  options: SaveToSourceOptions = {},
-  ctx?: ExecutionContext
-): Promise<CommandResult> {
-  try {
-    await initSharedTempDir();
-
-    // Phase 1: Validate preconditions
-    logger.debug(`Validating save preconditions for ${packageName}`);
-    const validation = await validateSavePreconditions(packageName);
-    if (!validation.valid) {
-      return createErrorResult(validation.error!);
-    }
-
-    const { cwd, packageRoot, filesMapping } = validation;
-
-    return await executeSavePipeline(packageName!, packageRoot!, cwd!, filesMapping!, options, ctx);
-  } finally {
-    clearConversionCache();
-    await cleanupSharedTempDir();
-  }
-}
-
-/**
  * Execute the save pipeline (phases 2-8) with pre-validated inputs.
  *
- * This is the internal workhorse called by both `runSaveToSourcePipeline()`
- * (full package save) and `runDirectSaveFlow()` (resource-filtered save).
+ * Called by sync's push executor to perform the actual save operation.
  *
  * @param packageName - Validated package name
  * @param packageRoot - Absolute path to mutable package source
@@ -340,99 +279,6 @@ export async function executeSavePipeline(
 
   // Phase 9: Return result
   return createCommandResult(report);
-}
-
-/**
- * Validate save preconditions
- *
- * Performs comprehensive validation before attempting save operation:
- * - Package name is provided
- * - Workspace index exists and is readable
- * - Package exists in index
- * - Package has file mappings
- * - Package source is resolvable
- * - Source is mutable (not registry)
- *
- * @param packageName - Package name to validate
- * @returns Validation result with success status and required data or error
- */
-export async function validateSavePreconditions(
-  packageName: string | undefined,
-  targetDir?: string
-): Promise<ValidationResult> {
-  const cwd = targetDir ?? process.cwd();
-
-  // Check package name provided
-  if (!packageName) {
-    return {
-      valid: false,
-      error: 'Package name is required for save.'
-    };
-  }
-
-  // Read workspace index
-  let index;
-  try {
-    const result = await readWorkspaceIndex(cwd);
-    index = result.index;
-  } catch (error) {
-    return {
-      valid: false,
-      error: `Failed to read workspace index: ${error}`
-    };
-  }
-
-  // Check package exists in index
-  const pkgIndex = index.packages?.[packageName];
-  if (!pkgIndex) {
-    return {
-      valid: false,
-      error:
-        `Package '${packageName}' is not installed in this workspace.\n` +
-        `Run 'opkg install ${packageName}' to install it first.`
-    };
-  }
-
-  // Check package has file mappings
-  if (!pkgIndex.files || Object.keys(pkgIndex.files).length === 0) {
-    return {
-      valid: false,
-      error:
-        `Package '${packageName}' has no files installed.\n` +
-        `Nothing to save.`
-    };
-  }
-
-  // Resolve package source
-  let source;
-  try {
-    source = await resolvePackageSource(cwd, packageName);
-  } catch (error) {
-    return {
-      valid: false,
-      error: `Failed to resolve package source: ${error}`
-    };
-  }
-
-  // Check source is mutable
-  try {
-    assertMutableSourceOrThrow(source.absolutePath, {
-      packageName: source.packageName,
-      command: 'save'
-    });
-  } catch (error) {
-    return {
-      valid: false,
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
-
-  return {
-    valid: true,
-    cwd,
-    packageRoot: source.absolutePath,
-    filesMapping: pkgIndex.files
-  };
 }
 
 /**

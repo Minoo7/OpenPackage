@@ -92,13 +92,8 @@ export {
 // Save / Set Pipelines
 // ============================================================================
 
-export { runSaveToSourcePipeline, type SaveToSourceOptions } from './core/save/save-to-source-pipeline.js';
-export {
-  runDirectSaveFlow,
-  type DirectSaveResult,
-} from './core/save/direct-save-flow.js';
+export type { SaveToSourceOptions } from './core/save/save-to-source-pipeline.js';
 export type { SaveConflictStrategy } from './core/save/save-types.js';
-export { toSaveJsonOutput } from './core/save/save-result-reporter.js';
 export { runSetPipeline } from './core/set/set-pipeline.js';
 
 // ============================================================================

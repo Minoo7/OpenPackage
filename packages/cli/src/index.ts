@@ -91,7 +91,7 @@ program
       // All commands section - ultra compact
       output += 'All commands:\n\n';
       output += '    install, uninstall, list,\n';
-      output += '    new, add, remove, save, sync, set,\n';
+      output += '    new, add, remove, sync, set,\n';
       output += '    publish, unpublish, search, view, which,\n';
       output += '    login, logout, config\n\n';
       
@@ -158,17 +158,12 @@ program
 
 program
   .command('save')
-  .argument('[resource-spec]', 'resource or package name (omit to save all modified packages)')
-  .description('Save workspace edits back to mutable package source')
-  .option('-g, --global', 'save from global scope instead of project')
-  .option('-f, --force', 'auto-select newest when conflicts occur')
-  .option('--dry-run', 'preview changes without writing to source')
-  .option('--conflicts <strategy>', 'conflict resolution: newest, skip, or auto')
-  .option('--prefer <platform>', 'prefer specified platform version for conflicts')
-  .option('--json', 'output results as JSON')
-  .action(withErrorHandling(async (...args: any[]) => {
+  .description('(deprecated) Use sync --push instead')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .action(withErrorHandling(async () => {
     const { setupSaveCommand } = await import('./commands/save.js');
-    await setupSaveCommand(args);
+    await setupSaveCommand();
   }));
 
 program

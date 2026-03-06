@@ -73,7 +73,6 @@ export {
   runDirectUninstallFlow,
   type DirectUninstallOptions,
   type DirectUninstallResult,
-  type CandidateFormatters,
 } from './core/uninstall/direct-uninstall-flow.js';
 
 // ============================================================================

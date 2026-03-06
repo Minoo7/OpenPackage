@@ -8,10 +8,11 @@
 
 import type { UninstallOptions } from '../../types/index.js';
 import type { ExecutionContext } from '../../types/execution-context.js';
-import { resolveByName, type ResolutionCandidate } from '../resources/resource-resolver.js';
+import { resolveByName, formatCandidateTitle, formatCandidateDescription } from '../resources/resource-resolver.js';
+import type { ResolutionCandidate } from '../resources/resource-resolver.js';
 import { traverseScopesFlat, type ResourceScope } from '../resources/scope-traversal.js';
 import { disambiguate } from '../resources/disambiguation-prompt.js';
-import { formatScopeTag } from '../../utils/formatters.js';
+import { parseWhichQuery } from '../which/which-pipeline.js';
 import { executeUninstallCandidate } from './uninstall-executor.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
 
@@ -34,71 +35,42 @@ export interface DirectUninstallResult {
   }>;
 }
 
-export interface CandidateFormatters {
-  formatTitle: (candidate: ResolutionCandidate) => string;
-  formatDescription: (candidate: ResolutionCandidate) => string;
-}
-
-// ---------------------------------------------------------------------------
-// Default formatters (can be overridden by CLI/GUI for richer display)
-// ---------------------------------------------------------------------------
-
-function defaultFormatTitle(candidate: ResolutionCandidate): string {
-  if (candidate.kind === 'package') {
-    const pkg = candidate.package!;
-    const version = pkg.version && pkg.version !== '0.0.0' ? ` (v${pkg.version})` : '';
-    const scopeTag = formatScopeTag(pkg.scope);
-    return `${pkg.packageName}${version} (package, ${pkg.resourceCount} resources)${scopeTag}`;
-  }
-  const r = candidate.resource!;
-  const fromPkg = r.packageName ? `, from ${r.packageName}` : '';
-  const scopeTag = formatScopeTag(r.scope);
-  return `${r.resourceName} (${r.resourceType}${fromPkg})${scopeTag}`;
-}
-
-function defaultFormatDescription(candidate: ResolutionCandidate): string {
-  const files = candidate.kind === 'package'
-    ? candidate.package!.targetFiles
-    : candidate.resource!.targetFiles;
-  if (files.length === 0) return 'no files';
-  const displayFiles = files.slice(0, 5);
-  const remaining = files.length - displayFiles.length;
-  let desc = displayFiles.join('\n');
-  if (remaining > 0) {
-    desc += `\n+${remaining} more`;
-  }
-  return desc;
-}
-
 // ---------------------------------------------------------------------------
 // Flow
 // ---------------------------------------------------------------------------
 
 /**
  * Run the direct (non-interactive) uninstall flow:
- * 1. Traverse scopes and resolve candidates by name
- * 2. Disambiguate if multiple matches
- * 3. Execute uninstall for each selected candidate
+ * 1. Parse input for optional type qualifier (e.g., `skills/my-skill`)
+ * 2. Traverse scopes and resolve candidates by name
+ * 3. Filter by type if type-qualified
+ * 4. Disambiguate if multiple matches
+ * 5. Execute uninstall for each selected candidate
  */
 export async function runDirectUninstallFlow(
   name: string,
   options: DirectUninstallOptions,
   traverseOpts: { programOpts?: Record<string, any>; globalOnly?: boolean; projectOnly?: boolean },
-  createContext: (opts: { global: boolean; cwd?: string; interactive: boolean }) => Promise<ExecutionContext>,
-  formatters?: CandidateFormatters
+  createContext: (opts: { global: boolean; cwd?: string; interactive: boolean }) => Promise<ExecutionContext>
 ): Promise<DirectUninstallResult> {
-  const fmt = formatters ?? {
-    formatTitle: defaultFormatTitle,
-    formatDescription: defaultFormatDescription,
-  };
+  // Parse optional type qualifier (e.g. "skills/skill-dev" → name: "skill-dev", typeFilter: "skill")
+  const query = parseWhichQuery(name);
 
   const candidates = await traverseScopesFlat<ResolutionCandidate>(
     traverseOpts,
     async ({ scope, context }) => {
-      const result = await resolveByName(name, context.targetDir, scope);
+      const result = await resolveByName(query.name, context.targetDir, scope);
       return result.candidates;
     }
   );
+
+  // If type-qualified, filter by resource type
+  let filtered = candidates;
+  if (query.typeFilter) {
+    filtered = candidates.filter(
+      c => c.kind === 'resource' && c.resource?.resourceType === query.typeFilter
+    );
+  }
 
   // Create a temporary context for prompt/output port access during disambiguation
   const disambiguationCtx = await createContext({
@@ -109,10 +81,10 @@ export async function runDirectUninstallFlow(
 
   const selected = await disambiguate(
     name,
-    candidates,
+    filtered,
     (c) => ({
-      title: fmt.formatTitle(c),
-      description: fmt.formatDescription(c),
+      title: formatCandidateTitle(c),
+      description: formatCandidateDescription(c),
       value: c,
     }),
     {

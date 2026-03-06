@@ -12,12 +12,12 @@
 import type { CommandResult } from '../../types/index.js';
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
-import { resolveByName, type ResolutionCandidate } from '../resources/resource-resolver.js';
+import { resolveByName, formatCandidateTitle, formatCandidateDescription } from '../resources/resource-resolver.js';
+import type { ResolutionCandidate } from '../resources/resource-resolver.js';
 import { traverseScopesFlat } from '../resources/scope-traversal.js';
 import type { TraverseScopesOptions } from '../resources/scope-traversal.js';
 import { disambiguate } from '../resources/disambiguation-prompt.js';
 import { parseWhichQuery } from '../which/which-pipeline.js';
-import { formatScopeTag } from '../../utils/formatters.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
 import { logger } from '../../utils/logger.js';
 import {
@@ -43,37 +43,6 @@ export interface DirectSaveResult {
 interface PairedCandidate {
   candidate: ResolutionCandidate;
   targetDir: string;
-}
-
-// ---------------------------------------------------------------------------
-// Formatters
-// ---------------------------------------------------------------------------
-
-function formatTitle(candidate: ResolutionCandidate): string {
-  if (candidate.kind === 'package') {
-    const pkg = candidate.package!;
-    const version = pkg.version && pkg.version !== '0.0.0' ? ` (v${pkg.version})` : '';
-    const scopeTag = formatScopeTag(pkg.scope);
-    return `${pkg.packageName}${version} (package, ${pkg.resourceCount} resources)${scopeTag}`;
-  }
-  const r = candidate.resource!;
-  const fromPkg = r.packageName ? `, from ${r.packageName}` : '';
-  const scopeTag = formatScopeTag(r.scope);
-  return `${r.resourceName} (${r.resourceType}${fromPkg})${scopeTag}`;
-}
-
-function formatDescription(candidate: ResolutionCandidate): string {
-  const files = candidate.kind === 'package'
-    ? candidate.package!.targetFiles
-    : candidate.resource!.targetFiles;
-  if (files.length === 0) return 'no files';
-  const displayFiles = files.slice(0, 5);
-  const remaining = files.length - displayFiles.length;
-  let desc = displayFiles.join('\n');
-  if (remaining > 0) {
-    desc += `\n+${remaining} more`;
-  }
-  return desc;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,8 +97,8 @@ export async function runDirectSaveFlow(
     nameArg,
     filtered,
     (p) => ({
-      title: formatTitle(p.candidate),
-      description: formatDescription(p.candidate),
+      title: formatCandidateTitle(p.candidate),
+      description: formatCandidateDescription(p.candidate),
       value: p,
     }),
     {

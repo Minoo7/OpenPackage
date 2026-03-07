@@ -23,6 +23,9 @@ import { checkContentStatus } from '../list/content-status-checker.js';
 import { classifyFileActions } from './sync-status-classifier.js';
 import { executePushActions } from './sync-push-executor.js';
 import { executePullActions } from './sync-pull-executor.js';
+import { executeRemoveActions } from './sync-remove-executor.js';
+import { executePullNewActions } from './sync-pull-new-executor.js';
+import { detectNewSourceFiles } from './sync-source-scanner.js';
 import { resolveConflictsInteractively } from './sync-conflict-resolver.js';
 import { discoverSyncablePackages } from './sync-discovery.js';
 import { aggregateSyncFileResults, buildSyncAllResult, formatSyncMessage } from './sync-result-reporter.js';
@@ -97,12 +100,13 @@ export async function runSyncPipeline(
     actions = [...nonConflicts, ...resolved];
   }
 
-  // Partition into push and pull
+  // Partition into push, pull, remove, and skip
   const pushActions = actions.filter(a => a.type === 'push');
   const pullActions = actions.filter(a => a.type === 'pull');
+  const removeActions = actions.filter(a => a.type === 'remove');
   const skipActions = actions.filter(a => a.type === 'skip');
 
-  // Execute push and pull
+  // Execute push, pull, and remove
   const allResults: SyncFileResult[] = [];
 
   // Add skip results
@@ -143,6 +147,34 @@ export async function runSyncPipeline(
     allResults.push(...pullResults);
   }
 
+  // Execute remove (source-deleted stale files)
+  if (removeActions.length > 0) {
+    const removeResults = await executeRemoveActions(
+      removeActions,
+      packageName,
+      cwd,
+      filesMapping,
+      options,
+    );
+    allResults.push(...removeResults);
+  }
+
+  // Detect and pull new source files (only in pull/bidirectional mode)
+  if (options.direction !== 'push') {
+    const existingKeys = new Set(Object.keys(filesMapping));
+    const newFiles = await detectNewSourceFiles(packageRoot, cwd, existingKeys);
+    if (newFiles.length > 0) {
+      const newResults = await executePullNewActions(
+        newFiles,
+        packageName,
+        packageRoot,
+        cwd,
+        options,
+      );
+      allResults.push(...newResults);
+    }
+  }
+
   return aggregateSyncFileResults(packageName, allResults);
 }
 
@@ -170,7 +202,7 @@ export async function runSyncAllPipeline(
     try {
       const result = await runSyncPipeline(pkg.packageName, targetDir, options, ctx);
 
-      if (result.pushed > 0 || result.pulled > 0 || result.errors > 0) {
+      if (result.pushed > 0 || result.pulled > 0 || result.removed > 0 || result.errors > 0) {
         packageResults.push({
           packageName: pkg.packageName,
           status: result.errors > 0 && result.pushed === 0 && result.pulled === 0 ? 'error' : 'synced',

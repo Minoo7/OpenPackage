@@ -103,6 +103,9 @@ export async function executeSavePipeline(
           statusSummary.outdatedFiles.push(targetPath);
           continue; // Skip outdated files (source newer, warn later)
         }
+        if (status === 'source-deleted') {
+          continue; // Cannot push to deleted source
+        }
         if (status === 'diverged') {
           statusSummary.divergedFiles.push(targetPath);
         }

@@ -252,6 +252,8 @@ export function mergeTrackedAndUntrackedResources(
                 fileStatus = 'outdated';
               } else if (f.contentStatus === 'diverged') {
                 fileStatus = 'diverged';
+              } else if (f.contentStatus === 'source-deleted') {
+                fileStatus = 'outdated';
               } else if (f.contentStatus === 'clean') {
                 fileStatus = 'clean';
               } else {

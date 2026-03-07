@@ -22,6 +22,7 @@ export interface SyncOptions {
 export type SyncFileAction =
   | { type: 'push'; sourceKey: string; targetPath: string }
   | { type: 'pull'; sourceKey: string; targetPath: string }
+  | { type: 'remove'; sourceKey: string; targetPath: string }
   | { type: 'conflict'; sourceKey: string; targetPath: string; resolution?: 'workspace' | 'source' | 'skip' }
   | { type: 'skip'; sourceKey: string; targetPath: string; reason: string };
 
@@ -29,6 +30,7 @@ export interface SyncPackageResult {
   packageName: string;
   pushed: number;
   pulled: number;
+  removed: number;
   skipped: number;
   errors: number;
   files: SyncFileResult[];
@@ -37,7 +39,7 @@ export interface SyncPackageResult {
 export interface SyncFileResult {
   sourceKey: string;
   targetPath: string;
-  action: 'pushed' | 'pulled' | 'skipped' | 'error';
+  action: 'pushed' | 'pulled' | 'removed' | 'skipped' | 'error';
   operation?: 'created' | 'updated';
   detail?: string;
 }
@@ -60,6 +62,7 @@ export interface SyncAllJsonOutput {
     packagesFailed: number;
     totalFilesPushed: number;
     totalFilesPulled: number;
+    totalFilesRemoved: number;
   };
 }
 

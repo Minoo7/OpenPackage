@@ -110,7 +110,7 @@ export async function setupSyncCommand(args: any[]): Promise<void> {
   if (result.result) {
     const out = resolveOutput(ctx);
     const message = formatSyncMessage(result.result, normalized.dryRun);
-    if (result.result.pushed > 0 || result.result.pulled > 0) {
+    if (result.result.pushed > 0 || result.result.pulled > 0 || result.result.removed > 0) {
       out.success(message);
     } else {
       out.info(message);

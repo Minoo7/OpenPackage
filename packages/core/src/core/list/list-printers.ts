@@ -74,6 +74,9 @@ function formatPackageLine(pkg: ListPackageReport, statusEnabled?: boolean): str
     if (pkg.divergedCount && pkg.divergedCount > 0) {
       statusTags.push(red(`[${pkg.divergedCount} diverged]`));
     }
+    if (pkg.sourceDeletedCount && pkg.sourceDeletedCount > 0) {
+      statusTags.push(red(`[${pkg.sourceDeletedCount} deleted from source]`));
+    }
   }
   const statusTag = statusTags.length > 0 ? ' ' + statusTags.join(' ') : '';
 
@@ -112,6 +115,8 @@ function printFileList(
       label = `${dim(file.target)} ${yellow('[modified]')}`;
     } else if (statusEnabled && file.contentStatus === 'outdated') {
       label = `${dim(file.target)} ${cyan('[outdated]')}`;
+    } else if (statusEnabled && file.contentStatus === 'source-deleted') {
+      label = `${dim(file.target)} ${red('[deleted from source]')}`;
     } else if (statusEnabled && file.contentStatus === 'merged') {
       label = `${dim(file.target)} ${dim('[merged]')}`;
     } else {
@@ -294,6 +299,7 @@ export function printResourcesView(
         if (file.status === 'diverged') return red('[diverged]');
         if (file.status === 'modified') return yellow('[modified]');
         if (file.status === 'outdated') return cyan('[outdated]');
+        if (file.contentStatus === 'source-deleted') return red('[deleted from source]');
         if (file.status === 'untracked') return dim('[untracked]');
         if (file.contentStatus === 'merged') return dim('[merged]');
         return undefined;

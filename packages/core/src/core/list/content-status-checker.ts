@@ -20,7 +20,7 @@ import { extractContentByKeys } from '../save/save-merge-extractor.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
 import { logger } from '../../utils/logger.js';
 
-export type ContentStatus = 'modified' | 'clean' | 'outdated' | 'diverged' | 'merged';
+export type ContentStatus = 'modified' | 'clean' | 'outdated' | 'diverged' | 'merged' | 'source-deleted';
 
 /**
  * Check content status for all tracked files in a package.
@@ -93,8 +93,9 @@ async function checkThreeWayStatus(
     const workspaceHash = await calculateFileHash(workspaceContent);
     const workspaceChanged = workspaceHash !== installHash;
 
-    // If source is missing, only workspace side matters
+    // If source is missing and we have proof it existed at install time, it was deleted
     if (!(await exists(absSourcePath))) {
+      if (installSourceHash) return 'source-deleted';
       return workspaceChanged ? 'modified' : 'clean';
     }
 

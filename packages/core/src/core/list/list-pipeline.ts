@@ -25,7 +25,7 @@ export interface ListFileMapping {
   source: string;
   target: string;
   exists: boolean;
-  contentStatus?: 'modified' | 'clean' | 'outdated' | 'diverged' | 'merged';
+  contentStatus?: 'modified' | 'clean' | 'outdated' | 'diverged' | 'merged' | 'source-deleted';
 }
 
 /**
@@ -63,6 +63,7 @@ export interface ListPackageReport {
   modifiedCount?: number;
   outdatedCount?: number;
   divergedCount?: number;
+  sourceDeletedCount?: number;
   isRegistryPackage?: boolean;
 }
 
@@ -406,6 +407,7 @@ async function checkPackageStatus(
   let modifiedCount: number | undefined;
   let outdatedCount: number | undefined;
   let divergedCount: number | undefined;
+  let sourceDeletedCount: number | undefined;
   let isRegistryPackageFlag: boolean | undefined;
   if (statusEnabled && sourceExists) {
     isRegistryPackageFlag = isRegistryPath(sourceRoot);
@@ -414,6 +416,7 @@ async function checkPackageStatus(
       let modified = 0;
       let outdated = 0;
       let diverged = 0;
+      let sourceDeleted = 0;
       for (const file of fileList) {
         const key = `${file.source}::${file.target}`;
         const cs = statusMap.get(key);
@@ -422,11 +425,13 @@ async function checkPackageStatus(
           if (cs === 'modified') modified++;
           if (cs === 'outdated') outdated++;
           if (cs === 'diverged') diverged++;
+          if (cs === 'source-deleted') sourceDeleted++;
         }
       }
       modifiedCount = modified;
       outdatedCount = outdated;
       divergedCount = diverged;
+      sourceDeletedCount = sourceDeleted;
     } catch (error) {
       logger.debug(`Content status check failed for ${pkgName}: ${error}`);
     }
@@ -502,6 +507,7 @@ async function checkPackageStatus(
     modifiedCount,
     outdatedCount,
     divergedCount,
+    sourceDeletedCount,
     isRegistryPackage: isRegistryPackageFlag
   };
 }

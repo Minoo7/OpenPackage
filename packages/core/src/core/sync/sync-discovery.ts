@@ -12,6 +12,7 @@ import { resolvePackageSource } from '../source-resolution/resolve-package-sourc
 import { isRegistryPath } from '../source-mutability.js';
 import { checkContentStatus } from '../list/content-status-checker.js';
 import { detectAllNewWorkspaceFiles } from '../save/save-new-file-detector.js';
+import { detectNewSourceFiles } from './sync-source-scanner.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -69,6 +70,9 @@ export async function discoverSyncablePackages(
         if (status === 'outdated') {
           directions.add('pull');
         }
+        if (status === 'source-deleted') {
+          directions.add('pull');
+        }
         if (status === 'diverged') {
           directions.add('push');
           directions.add('pull');
@@ -80,6 +84,15 @@ export async function discoverSyncablePackages(
         const newEntries = await detectAllNewWorkspaceFiles(pkgEntry.files, targetDir);
         if (Object.keys(newEntries).length > 0) {
           directions.add('push');
+        }
+      }
+
+      // Also detect new source files not in the index (pull candidates)
+      if (direction !== 'push') {
+        const existingKeys = new Set(Object.keys(pkgEntry.files));
+        const newFiles = await detectNewSourceFiles(source.absolutePath, targetDir, existingKeys);
+        if (newFiles.length > 0) {
+          directions.add('pull');
         }
       }
 

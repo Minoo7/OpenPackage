@@ -81,6 +81,7 @@ function countSyncStatus(packages: ListPackageReport[]): SyncCounts {
     if (pkg.isRegistryPackage) continue;
     modified += pkg.modifiedCount ?? 0;
     outdated += pkg.outdatedCount ?? 0;
+    outdated += pkg.sourceDeletedCount ?? 0;
     // Treat diverged as both modified and outdated (needs attention in both directions)
     const diverged = pkg.divergedCount ?? 0;
     modified += diverged;

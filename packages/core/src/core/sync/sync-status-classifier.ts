@@ -76,6 +76,12 @@ function classifySingle(
       }
       return { type: 'push', sourceKey, targetPath };
 
+    case 'source-deleted':
+      if (direction === 'push') {
+        return { type: 'skip', sourceKey, targetPath, reason: 'source-deleted (cannot push)' };
+      }
+      return { type: 'remove', sourceKey, targetPath };
+
     default:
       return null;
   }

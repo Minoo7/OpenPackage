@@ -87,7 +87,8 @@ export async function runMultiContextPipeline(
 
   if (groupReport && reportDataList.length > 0) {
     const merged = mergeInstallReportData(reportDataList, {
-      packageName: groupReportPackageName ?? contexts[0].source.packageName
+      packageName: groupReportPackageName ?? contexts[0].source.packageName,
+      suppressHeader: true
     });
     const output = resolveOutput(contexts[0].execution);
     displayInstallationResults(merged, output);
@@ -144,7 +145,7 @@ export async function filterSubsumedContexts(
 
 export function mergeInstallReportData(
   list: InstallReportData[],
-  overrides: { packageName?: string }
+  overrides: { packageName?: string; suppressHeader?: boolean }
 ): InstallReportData {
   const first = list[0];
   const installedFiles = list.flatMap(r => r.installedFiles ?? []);
@@ -178,6 +179,7 @@ export function mergeInstallReportData(
     relocatedFiles,
     claimedFiles: claimedFiles.length > 0 ? claimedFiles : undefined,
     replacedResources: replacedResources.length > 0 ? replacedResources : undefined,
-    resolvedPackages: first.resolvedPackages
+    resolvedPackages: first.resolvedPackages,
+    suppressHeader: overrides.suppressHeader
   };
 }

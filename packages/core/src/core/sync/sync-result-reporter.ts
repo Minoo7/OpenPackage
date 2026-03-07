@@ -23,7 +23,7 @@ export function formatSyncMessage(result: SyncPackageResult, dryRun?: boolean): 
   const prefix = dryRun ? '(dry-run) ' : '';
   const lines: string[] = [];
 
-  if (result.pushed === 0 && result.pulled === 0 && result.errors === 0) {
+  if (result.pushed === 0 && result.pulled === 0 && result.removed === 0 && result.errors === 0) {
     return `${prefix}Synced ${result.packageName}\n  No changes detected`;
   }
 
@@ -32,6 +32,7 @@ export function formatSyncMessage(result: SyncPackageResult, dryRun?: boolean): 
   const parts: string[] = [];
   if (result.pushed > 0) parts.push(`${result.pushed} file(s) pushed`);
   if (result.pulled > 0) parts.push(`${result.pulled} file(s) pulled`);
+  if (result.removed > 0) parts.push(`${result.removed} file(s) removed`);
   if (result.skipped > 0) parts.push(`${result.skipped} file(s) skipped`);
   if (parts.length > 0) lines.push(`  ${parts.join(', ')}`);
 
@@ -47,6 +48,13 @@ export function formatSyncMessage(result: SyncPackageResult, dryRun?: boolean): 
   if (pulled.length > 0) {
     lines.push('  Pulled:');
     appendFileTree(lines, pulled);
+  }
+
+  // Removed files
+  const removed = result.files.filter(f => f.action === 'removed');
+  if (removed.length > 0) {
+    lines.push('  Removed:');
+    appendFileTree(lines, removed);
   }
 
   // Errors
@@ -95,6 +103,7 @@ export function formatSyncAllSummary(
       const parts: string[] = [];
       if (pkg.result.pushed > 0) parts.push(`${pkg.result.pushed} pushed`);
       if (pkg.result.pulled > 0) parts.push(`${pkg.result.pulled} pulled`);
+      if (pkg.result.removed > 0) parts.push(`${pkg.result.removed} removed`);
       summaryLines.push(`  \u2713 ${pkg.packageName}: ${parts.join(', ')}`);
     } else if (pkg.status === 'error') {
       summaryLines.push(`  \u2717 ${pkg.packageName}: ${pkg.error}`);
@@ -112,6 +121,9 @@ export function formatSyncAllSummary(
   }
   if (totals.totalFilesPulled > 0) {
     headerParts.push(`${totals.totalFilesPulled} file(s) pulled`);
+  }
+  if (totals.totalFilesRemoved > 0) {
+    headerParts.push(`${totals.totalFilesRemoved} file(s) removed`);
   }
 
   const header = headerParts.length > 0
@@ -139,6 +151,7 @@ export function aggregateSyncFileResults(
     packageName,
     pushed: files.filter(f => f.action === 'pushed').length,
     pulled: files.filter(f => f.action === 'pulled').length,
+    removed: files.filter(f => f.action === 'removed').length,
     skipped: files.filter(f => f.action === 'skipped').length,
     errors: files.filter(f => f.action === 'error').length,
     files,
@@ -154,16 +167,18 @@ export function buildSyncAllResult(
 ): SyncAllResult {
   let totalFilesPushed = 0;
   let totalFilesPulled = 0;
+  let totalFilesRemoved = 0;
   let packagesWithChanges = 0;
   let packagesFailed = 0;
 
   for (const pkg of packageResults) {
     if (pkg.status === 'synced' && pkg.result) {
-      if (pkg.result.pushed > 0 || pkg.result.pulled > 0) {
+      if (pkg.result.pushed > 0 || pkg.result.pulled > 0 || pkg.result.removed > 0) {
         packagesWithChanges++;
       }
       totalFilesPushed += pkg.result.pushed;
       totalFilesPulled += pkg.result.pulled;
+      totalFilesRemoved += pkg.result.removed;
     } else if (pkg.status === 'error') {
       packagesFailed++;
     }
@@ -177,6 +192,7 @@ export function buildSyncAllResult(
       packagesFailed,
       totalFilesPushed,
       totalFilesPulled,
+      totalFilesRemoved,
     },
   };
 

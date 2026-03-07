@@ -22,6 +22,15 @@ export interface ResolutionResult {
 }
 
 // ---------------------------------------------------------------------------
+// Candidate accessors
+// ---------------------------------------------------------------------------
+
+/** Extract the scope from a resolution candidate. */
+export function getCandidateScope(candidate: ResolutionCandidate): ResourceScope | undefined {
+  return candidate.kind === 'resource' ? candidate.resource?.scope : candidate.package?.scope;
+}
+
+// ---------------------------------------------------------------------------
 // Shared candidate formatters (used by uninstall and save disambiguation)
 // ---------------------------------------------------------------------------
 

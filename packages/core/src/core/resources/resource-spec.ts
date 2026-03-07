@@ -11,10 +11,12 @@ import type { ExecutionContext } from '../../types/execution-context.js';
 import type { OutputPort } from '../ports/output.js';
 import type { PromptPort } from '../ports/prompt.js';
 import { parseWhichQuery, type WhichQuery } from '../which/which-pipeline.js';
-import { resolveByName, formatCandidateTitle, formatCandidateDescription, type ResolutionCandidate } from './resource-resolver.js';
+import { resolveByName, formatCandidateTitle, formatCandidateDescription, getCandidateScope, type ResolutionCandidate } from './resource-resolver.js';
 import { traverseScopesFlat, type TraverseScopesOptions } from './scope-traversal.js';
 import { disambiguate, type DisambiguationOptions } from './disambiguation-prompt.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
+import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
+import { expandTildePath } from '../../utils/path-resolution.js';
 
 // ---------------------------------------------------------------------------
 // Classification
@@ -71,11 +73,15 @@ export function classifyResourceSpec(input: string): ResourceSpecClassification 
 export interface ResolvedTarget {
   candidate: ResolutionCandidate;
   targetDir: string;
+  /** Absolute path to the package source directory (tilde-expanded from workspace index). */
+  packageSourcePath?: string;
 }
 
 export interface ResolveResourceSpecOptions extends DisambiguationOptions {
   /** Optional type filter to apply (usually from classifyResourceSpec). Overrides query.typeFilter if provided. */
   typeFilter?: string;
+  /** If set, prefer candidates from this scope. When preferred-scope candidates exist, others are dropped before disambiguation. */
+  scopePreference?: 'project' | 'global';
 }
 
 /**
@@ -104,8 +110,20 @@ export async function resolveResourceSpec(
     traverseOpts,
     async ({ scope, context }) => {
       const result = await resolveByName(query.name, context.targetDir, scope);
-      for (const c of result.candidates) {
-        paired.push({ candidate: c, targetDir: context.targetDir });
+      if (result.candidates.length > 0) {
+        // Read workspace index once per scope to enrich with package source paths
+        const { index } = await readWorkspaceIndex(context.targetDir);
+        for (const c of result.candidates) {
+          let packageSourcePath: string | undefined;
+          const pkgName = c.kind === 'resource' ? c.resource?.packageName : c.package?.packageName;
+          if (pkgName) {
+            const pkgEntry = index.packages[pkgName];
+            if (pkgEntry?.path) {
+              packageSourcePath = expandTildePath(pkgEntry.path);
+            }
+          }
+          paired.push({ candidate: c, targetDir: context.targetDir, packageSourcePath });
+        }
       }
       return [null];
     },
@@ -118,6 +136,14 @@ export async function resolveResourceSpec(
     filtered = filtered.filter(
       p => p.candidate.kind === 'resource' && p.candidate.resource?.resourceType === typeFilter,
     );
+  }
+
+  // Scope preference: if preferred scope has candidates, drop others
+  if (options?.scopePreference && filtered.length > 1) {
+    const preferred = filtered.filter(p => getCandidateScope(p.candidate) === options.scopePreference);
+    if (preferred.length > 0) {
+      filtered = preferred;
+    }
   }
 
   // Disambiguate

@@ -12,7 +12,7 @@ import type { ExecutionContext } from '../../types/execution-context.js';
 import type { CommandResult } from '../../types/index.js';
 import { classifyAddInput, type AddInputClassification, type AddClassifyOptions } from './add-input-classifier.js';
 import { runAddDependencyFlow, type AddDependencyResult, type AddDependencyOptions } from './add-dependency-flow.js';
-import { runAddToSourcePipeline, runAddToSourcePipelineBatch, type AddToSourceResult, type AddToSourceOptions } from './add-to-source-pipeline.js';
+import { runAddToSourcePipeline, runAddToSourcePipelineBatch, addSourceEntriesToPackage, type AddToSourceResult, type AddToSourceOptions } from './add-to-source-pipeline.js';
 import { classifyResourceSpec, resolveResourceSpec } from '../resources/resource-spec.js';
 import { exists } from '../../utils/fs.js';
 
@@ -68,21 +68,41 @@ export async function processAddResource(
     if (options.dev) {
       throw new Error('--dev can only be used when adding a dependency, not when copying files');
     }
-    const traverseOpts = { programOpts: { cwd }, projectOnly: true };
+    const traverseOpts = { programOpts: { cwd } };
     const resolved = await resolveResourceSpec(resourceSpec, traverseOpts, {
       notFoundMessage: `"${resourceSpec}" not found as a resource.\nRun \`opkg ls\` to see installed resources.`,
       promptMessage: 'Select which resource to add:',
       multi: false,
+      scopePreference: 'project',
     }, execContext);
 
     if (resolved.length === 0) {
       throw new Error(`No resource found for "${resourceSpec}".`);
     }
 
-    const { candidate, targetDir } = resolved[0];
+    const { candidate, packageSourcePath } = resolved[0];
     const resource = candidate.resource!;
-    const absPath = resource.sourcePath || join(targetDir, resource.targetFiles[0]);
-    const result = await runAddToSourcePipeline(options.to, absPath, { ...options, execContext });
+
+    // Build source entries directly from the resource's sourceKeys.
+    // We read from the installed package source directory (not the workspace
+    // deployment path) to preserve the correct package-relative registryPaths.
+    if (!packageSourcePath) {
+      throw new Error(`Package source path not found for "${resource.packageName}".`);
+    }
+    const srcPkgDir = packageSourcePath;
+    const entries: Array<{ sourcePath: string; registryPath: string }> = [];
+    for (const sourceKey of resource.sourceKeys) {
+      const absSource = join(srcPkgDir, sourceKey);
+      if (await exists(absSource)) {
+        entries.push({ sourcePath: absSource, registryPath: sourceKey });
+      }
+    }
+
+    if (entries.length === 0) {
+      throw new Error(`No source files found for resource "${resourceSpec}".`);
+    }
+
+    const result = await addSourceEntriesToPackage(options.to, entries, { ...options, execContext });
     if (!result.success) {
       throw new Error(result.error || 'Add operation failed');
     }

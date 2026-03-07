@@ -10,6 +10,7 @@ import type { UninstallOptions } from '../../types/index.js';
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { ResourceScope } from '../resources/scope-traversal.js';
 import { resolveResourceSpec } from '../resources/resource-spec.js';
+import { getCandidateScope } from '../resources/resource-resolver.js';
 import { executeUninstallCandidate } from './uninstall-executor.js';
 
 // ---------------------------------------------------------------------------
@@ -69,26 +70,16 @@ export async function runDirectUninstallFlow(
 
   for (const { candidate } of selected) {
     const ctx = await createContext({
-      global: candidate.resource?.scope === 'global' || candidate.package?.scope === 'global',
+      global: getCandidateScope(candidate) === 'global',
       cwd: traverseOpts.programOpts?.cwd,
       interactive: false,
     });
     await executeUninstallCandidate(candidate, options, ctx);
 
-    if (candidate.kind === 'package') {
-      uninstalledItems.push({
-        name: candidate.package!.packageName,
-        kind: 'package',
-        scope: candidate.package!.scope,
-      });
-    } else {
-      uninstalledItems.push({
-        name: candidate.resource!.resourceName,
-        kind: 'resource',
-        resourceType: candidate.resource!.resourceType,
-        scope: candidate.resource!.scope,
-      });
-    }
+    uninstalledItems.push(candidate.kind === 'package'
+      ? { name: candidate.package!.packageName, kind: 'package' as const, scope: getCandidateScope(candidate)! }
+      : { name: candidate.resource!.resourceName, kind: 'resource' as const, resourceType: candidate.resource!.resourceType, scope: getCandidateScope(candidate)! }
+    );
   }
 
   return { uninstalledCount: selected.length, cancelled: false, uninstalledItems };

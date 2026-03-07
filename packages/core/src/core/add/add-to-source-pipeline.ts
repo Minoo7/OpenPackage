@@ -195,6 +195,61 @@ export async function runAddToSourcePipelineBatch(
 }
 
 /**
+ * Add pre-built source entries to a target package.
+ *
+ * Unlike `runAddToSourcePipeline`, this function bypasses the platform-aware
+ * source collector. Use this when you already know the correct registryPaths
+ * (e.g., when copying resources from one package to another).
+ */
+export async function addSourceEntriesToPackage(
+  targetPackageName: string | undefined,
+  entries: SourceEntry[],
+  options: AddToSourceOptions = {}
+): Promise<CommandResult<AddToSourceResult>> {
+  const cwd = process.cwd();
+
+  let packageContext: AddContext;
+  let sourceType: 'workspace' | 'global';
+  const isWorkspaceRoot = !targetPackageName;
+
+  if (isWorkspaceRoot) {
+    try {
+      packageContext = await buildWorkspacePackageContext(cwd);
+      sourceType = 'workspace';
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  } else {
+    let source;
+    try {
+      source = await resolveMutableSource({ cwd, packageName: targetPackageName });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    assertMutableSourceOrThrow(source.absolutePath, { packageName: source.packageName, command: 'add' });
+    packageContext = await buildPackageContextFromSource(source);
+    sourceType = source.absolutePath.includes(`${cwd}/.openpackage/packages/`)
+      ? 'workspace' as const
+      : 'global' as const;
+  }
+
+  const changed = await copyFilesWithConflictResolution(packageContext, entries, options);
+  const addedFilePaths = changed.map(f => join(packageContext.packageRootDir, f.path));
+
+  return {
+    success: true,
+    data: {
+      packageName: packageContext.name,
+      filesAdded: changed.length,
+      sourcePath: packageContext.packageRootDir,
+      sourceType,
+      isWorkspaceRoot,
+      addedFilePaths,
+    },
+  };
+}
+
+/**
  * Build context for workspace root package at .openpackage/
  * Creates the workspace manifest if it doesn't exist.
  */

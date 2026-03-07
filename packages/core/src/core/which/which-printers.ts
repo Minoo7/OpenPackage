@@ -39,7 +39,6 @@ export function printWhichResults(
   }
 
   for (let i = 0; i < results.length; i++) {
-    if (i > 0) out.info('');
     printSingleResult(results[i], options, out);
   }
 }

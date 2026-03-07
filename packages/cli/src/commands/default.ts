@@ -129,6 +129,7 @@ function printScopeSummary(summary: ScopeSummary): void {
 
 export async function runDefaultView(cwd?: string): Promise<void> {
   // Print ASCII art + version
+  console.log();
   console.log(bold(ASCII_ART));
   console.log(dim(`opkg@${getVersion()}`));
   console.log();
@@ -193,4 +194,5 @@ function printHints(): void {
   console.log(dim('Manage   install, uninstall, list'));
   console.log(dim('Author   new, add, remove, sync'));
   console.log(dim('Help     opkg <command> -h'));
+  console.log();
 }

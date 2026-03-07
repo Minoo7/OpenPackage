@@ -79,8 +79,8 @@ program
       
       // Usage section with common commands
       output += 'Usage:\n\n';
-      output += 'opkg install           install packages from openpackage.yml\n';
-      output += 'opkg install <pkg>     install a specific package\n';
+      output += 'opkg install [pkg]     install resource or package\n';
+      output += 'opkg list              list installed resources\n';
       output += 'opkg new               create a new package\n';
       output += 'opkg <command> -h      help on <command>\n\n';
       
@@ -90,9 +90,9 @@ program
       
       // All commands section - ultra compact
       output += 'All commands:\n\n';
-      output += '    install, uninstall, list,\n';
+      output += '    install, uninstall, list, which,\n';
       output += '    new, add, remove, sync, set,\n';
-      output += '    publish, unpublish, search, view, which,\n';
+      output += '    publish, unpublish, search, view,\n';
       output += '    login, logout, config\n\n';
       
       // Version
@@ -191,10 +191,18 @@ program
 
 program
   .command('set')
-  .argument('<field>', 'manifest field to set (name, version, description, author, license, keywords, homepage, repository)')
-  .argument('[value]', 'value to set (omit for interactive prompt)')
-  .description('Set a field in the package manifest (openpackage.yml)')
-  .option('--package <name>', 'target package name (defaults to workspace package)')
+  .argument('[package]', 'target package name (defaults to CWD package)')
+  .description('Set fields in the package manifest (openpackage.yml)')
+  .option('--ver <version>', 'update version (must be valid semver)')
+  .option('--name <name>', 'update package name')
+  .option('--description <text>', 'update description')
+  .option('--keywords <words>', 'space-separated keywords')
+  .option('--author <name>', 'update author')
+  .option('--license <license>', 'update license (e.g., MIT, Apache-2.0)')
+  .option('--homepage <url>', 'update homepage URL')
+  .option('--private <bool>', 'mark package as private')
+  .option('--force', 'skip confirmation prompts')
+  .option('--non-interactive', 'require at least one field flag (no prompts)')
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupSetCommand } = await import('./commands/set.js');
     await setupSetCommand(args);

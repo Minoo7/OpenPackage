@@ -38,6 +38,8 @@ export interface InstallReportData {
   interactive?: boolean;
   /** Package names that were replaced during subsumption resolution (upgrade from resource-scoped installs) */
   replacedResources?: string[];
+  /** When true, skip the main success/error header (used by grouped reports where per-resource spinners already showed status) */
+  suppressHeader?: boolean;
 }
 
 // ============================================================================
@@ -135,7 +137,7 @@ export function displayInstallationResults(data: InstallReportData, output: Outp
   }
 
   // ── Main success header ───────────────────────────────────────────────
-  {
+  if (!data.suppressHeader) {
     let headerText = `Installed ${packageName}`;
     if (mainPackage?.version) {
       headerText += `@${mainPackage.version}`;

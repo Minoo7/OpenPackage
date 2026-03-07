@@ -129,7 +129,7 @@ export async function runUnifiedInstallPipeline(
 
     tempConversionRoot = ctx._tempConversionRoot ?? null;
 
-    spinner1.stop();
+    spinner1.stop(`Prepared ${ctx.source.packageName}`);
   } catch (error) {
     spinner1?.stop();
     // convertPhase may have created a temp dir before failing
@@ -169,7 +169,7 @@ export async function runUnifiedInstallPipeline(
       await updateManifestPhase(ctx);
     }
 
-    spinner2.stop();
+    spinner2.stop(`Installed ${ctx.source.packageName}`);
 
     // Phase 7: Report results (always)
     return await reportResultsPhase(ctx, installResult);

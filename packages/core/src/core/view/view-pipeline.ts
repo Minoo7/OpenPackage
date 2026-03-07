@@ -23,6 +23,7 @@ import type { ExecutionContext } from '../../types/execution-context.js';
 import { getLocalOpenPackageDir, getLocalPackageYmlPath } from '../../utils/paths.js';
 import { arePackageNamesEquivalent } from '../../utils/package-name.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
+import { findPackageInIndex } from '../../utils/workspace-index-helpers.js';
 import type { HeaderInfo } from '../list/scope-data-collector.js';
 
 // ---------------------------------------------------------------------------
@@ -152,22 +153,10 @@ async function resolveFromWorkspaceIndex(
   const { index } = await readWorkspaceIndex(targetDir);
   const packages = index.packages || {};
 
-  // Find the package in the workspace index (exact or equivalent name match)
-  let entryKey: string | undefined;
-  if (packages[packageName]) {
-    entryKey = packageName;
-  } else {
-    for (const key of Object.keys(packages)) {
-      if (arePackageNamesEquivalent(key, packageName)) {
-        entryKey = key;
-        break;
-      }
-    }
-  }
+  const match = findPackageInIndex(packageName, packages);
+  if (!match) return null;
 
-  if (!entryKey) return null;
-
-  const entry = packages[entryKey];
+  const entry = match.entry;
   const resolved = resolveDeclaredPath(entry.path, targetDir);
   const packageDir = resolved.absolute;
 

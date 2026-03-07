@@ -8,7 +8,7 @@ import { resolveDeclaredPath } from '../../utils/path-resolution.js';
 import { exists } from '../../utils/fs.js';
 import type { WorkspaceIndexPackage } from '../../types/workspace-index.js';
 import { logger } from '../../utils/logger.js';
-import { getTargetPath } from '../../utils/workspace-index-helpers.js';
+import { getTargetPath, findPackageInIndex } from '../../utils/workspace-index-helpers.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
 import { scanUntrackedFiles, type UntrackedScanResult } from './untracked-files-scanner.js';
 import { checkContentStatus } from './content-status-checker.js';
@@ -600,23 +600,26 @@ export async function runListPipeline(
 
   // If specific package requested, that package becomes the "root" and we show its dependencies
   if (packageName) {
-    const pkgEntry = packages[packageName];
-    if (!pkgEntry) {
+    const match = findPackageInIndex(packageName, packages);
+    if (!match) {
       return {
         success: true,
         data: { packages: [], rootPackageNames: [], trackedCount: 0, missingCount: 0, untrackedCount: 0 }
       };
     }
 
+    const resolvedName = match.key;
+    const pkgEntry = match.entry;
+
     let targetPackage: ListPackageReport;
     try {
-      targetPackage = await checkPackageStatus(targetDir, packageName, pkgEntry, true, platforms, status);
+      targetPackage = await checkPackageStatus(targetDir, resolvedName, pkgEntry, true, platforms, status);
       reports.push(targetPackage);
-      reportMap.set(packageName, targetPackage);
+      reportMap.set(resolvedName, targetPackage);
     } catch (error) {
-      logger.warn(`Failed to check package ${packageName}: ${error}`);
+      logger.warn(`Failed to check package ${resolvedName}: ${error}`);
       targetPackage = {
-        name: packageName,
+        name: resolvedName,
         version: pkgEntry?.version,
         path: pkgEntry?.path ?? '',
         state: 'missing',
@@ -626,7 +629,7 @@ export async function runListPipeline(
         dependencies: pkgEntry?.dependencies
       };
       reports.push(targetPackage);
-      reportMap.set(packageName, targetPackage);
+      reportMap.set(resolvedName, targetPackage);
     }
 
     // Load the target package's dependencies as tree nodes

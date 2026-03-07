@@ -2,7 +2,9 @@
  * Helper functions for working with workspace index file mappings
  */
 
-import type { WorkspaceIndexFileMapping } from '../types/workspace-index.js';
+import type { WorkspaceIndexFileMapping, WorkspaceIndexPackage } from '../types/workspace-index.js';
+import { arePackageNamesEquivalent, normalizePackageNameForLookup } from './package-name.js';
+import { classifyResourceSpec } from '../core/resources/resource-spec.js';
 
 /**
  * Extract target path from a mapping (handles both string and object forms)
@@ -39,12 +41,66 @@ export function extractAllTargetPaths(
   files: Record<string, (string | WorkspaceIndexFileMapping)[]>
 ): string[] {
   const paths: string[] = [];
-  
+
   for (const mappings of Object.values(files)) {
     for (const mapping of mappings) {
       paths.push(getTargetPath(mapping));
     }
   }
-  
+
   return paths;
+}
+
+/**
+ * Find a package in the workspace index using multi-strategy fallback:
+ * 1. Exact key match
+ * 2. Case-insensitive equivalence
+ * 3. Old→new format normalization (@scope/repo → gh@scope/repo)
+ * 4. Resource name match (e.g. "skills/skill-creator" matches package with source keys starting with "skills/skill-creator/")
+ */
+export function findPackageInIndex(
+  input: string,
+  packages: Record<string, WorkspaceIndexPackage>,
+): { key: string; entry: WorkspaceIndexPackage } | null {
+  // 1. Exact key match
+  if (packages[input]) {
+    return { key: input, entry: packages[input] };
+  }
+
+  // 2. Case-insensitive equivalence
+  for (const key of Object.keys(packages)) {
+    if (arePackageNamesEquivalent(key, input)) {
+      return { key, entry: packages[key] };
+    }
+  }
+
+  // 3. Old→new format normalization
+  const normalized = normalizePackageNameForLookup(input);
+  if (normalized !== input.toLowerCase()) {
+    if (packages[normalized]) {
+      return { key: normalized, entry: packages[normalized] };
+    }
+    for (const key of Object.keys(packages)) {
+      if (arePackageNamesEquivalent(key, normalized)) {
+        return { key, entry: packages[key] };
+      }
+    }
+  }
+
+  // 4. Resource name match — only if input looks like a resource ref (e.g. "skills/skill-creator")
+  const spec = classifyResourceSpec(input);
+  if (spec.kind === 'resource-ref') {
+    const inputWithSlash = input + '/';
+    for (const [key, entry] of Object.entries(packages)) {
+      const files = entry.files;
+      if (!files) continue;
+      for (const sourceKey of Object.keys(files)) {
+        if (sourceKey.startsWith(inputWithSlash) || sourceKey === input) {
+          return { key, entry };
+        }
+      }
+    }
+  }
+
+  return null;
 }

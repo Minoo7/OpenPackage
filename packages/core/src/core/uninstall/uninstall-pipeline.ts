@@ -13,7 +13,7 @@ import { getPlatformRootFileNames } from '../platform/platform-root-files.js';
 import { getAllPlatforms } from '../platforms.js';
 import { logger } from '../../utils/logger.js';
 import { removeFileMapping } from './flow-aware-uninstaller.js';
-import { getTargetPath } from '../../utils/workspace-index-helpers.js';
+import { getTargetPath, findPackageInIndex } from '../../utils/workspace-index-helpers.js';
 import { buildPreservedDirectoriesSet } from '../platform/directory-preservation.js';
 import { cleanupEmptyParents } from '../../utils/cleanup-empty-parents.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
@@ -117,13 +117,16 @@ export async function runUninstallPipeline(
     );
   }
 
-  // Look up package by exact name provided by user (no normalization)
+  // Look up package with multi-strategy matching (exact, case-insensitive, normalized, resource name)
   const { index, path: indexPath } = await readWorkspaceIndex(targetDir);
-  const pkgEntry = index.packages?.[packageName];
+  const match = findPackageInIndex(packageName, index.packages || {});
 
-  if (!pkgEntry) {
+  if (!match) {
     return { success: false, error: `Package '${packageName}' not found in workspace index.` };
   }
+
+  const resolvedName = match.key;
+  const pkgEntry = match.entry;
 
   const rootNames = getPlatformRootFileNames(getAllPlatforms(undefined, targetDir), targetDir);
 
@@ -132,12 +135,12 @@ export async function runUninstallPipeline(
     const plannedRemovals = await processFileMappings(
       pkgEntry.files || {},
       targetDir,
-      packageName,
+      resolvedName,
       rootNames,
       { dryRun: true }
     );
-    const rootPlan = await processRootFileRemovals(targetDir, [packageName], { dryRun: true });
-    out.info(`(dry-run) Would remove ${plannedRemovals.removed.length} files for ${packageName}`);
+    const rootPlan = await processRootFileRemovals(targetDir, [resolvedName], { dryRun: true });
+    out.info(`(dry-run) Would remove ${plannedRemovals.removed.length} files for ${resolvedName}`);
     for (const filePath of plannedRemovals.removed) {
       out.info(` - ${filePath}`);
     }
@@ -157,19 +160,19 @@ export async function runUninstallPipeline(
   const { removed: deleted, updated } = await processFileMappings(
     pkgEntry.files || {},
     targetDir,
-    packageName,
+    resolvedName,
     rootNames,
     { dryRun: false }
   );
 
-  const rootResult = await processRootFileRemovals(targetDir, [packageName]);
+  const rootResult = await processRootFileRemovals(targetDir, [resolvedName]);
 
   // Update workspace index (migration will happen on write)
-  removeWorkspaceIndexEntry(index, packageName);
+  removeWorkspaceIndexEntry(index, resolvedName);
   await writeWorkspaceIndex({ path: indexPath, index });
 
   // Update openpackage.yml (migration will happen on write)
-  await removePackageFromOpenpackageYml(targetDir, packageName);
+  await removePackageFromOpenpackageYml(targetDir, resolvedName);
 
   // Cleanup empty directories (preserve platform roots from detection patterns)
   const preservedDirs = buildPreservedDirectoriesSet(targetDir);
@@ -177,7 +180,7 @@ export async function runUninstallPipeline(
   const deletedAbsolutePaths = deleted.map(relativePath => path.join(targetDir, relativePath));
   await cleanupEmptyParents(targetDir, deletedAbsolutePaths, preservedDirs);
 
-  logger.info(`Uninstalled ${packageName}: removed ${deleted.length} files, updated ${updated.length} merged files`);
+  logger.info(`Uninstalled ${resolvedName}: removed ${deleted.length} files, updated ${updated.length} merged files`);
 
   return {
     success: true,
@@ -205,11 +208,14 @@ export async function runSelectiveUninstallPipeline(
   }
 
   const { index, path: indexPath } = await readWorkspaceIndex(targetDir);
-  const pkgEntry = index.packages?.[packageName];
+  const match = findPackageInIndex(packageName, index.packages || {});
 
-  if (!pkgEntry) {
+  if (!match) {
     return { success: false, error: `Package '${packageName}' not found in workspace index.` };
   }
+
+  const resolvedName = match.key;
+  const pkgEntry = match.entry;
 
   const filteredFiles: Record<string, (string | WorkspaceIndexFileMapping)[]> = {};
   for (const key of sourceKeysToRemove) {
@@ -225,11 +231,11 @@ export async function runSelectiveUninstallPipeline(
     const plannedRemovals = await processFileMappings(
       filteredFiles,
       targetDir,
-      packageName,
+      resolvedName,
       rootNames,
       { dryRun: true }
     );
-    out.info(`(dry-run) Would remove ${plannedRemovals.removed.length} files for ${packageName}`);
+    out.info(`(dry-run) Would remove ${plannedRemovals.removed.length} files for ${resolvedName}`);
     for (const filePath of plannedRemovals.removed) {
       out.info(` - ${filePath}`);
     }
@@ -245,19 +251,19 @@ export async function runSelectiveUninstallPipeline(
   const { removed: deleted, updated } = await processFileMappings(
     filteredFiles,
     targetDir,
-    packageName,
+    resolvedName,
     rootNames,
     { dryRun: false }
   );
 
-  removeWorkspaceIndexFileKeys(index, packageName, sourceKeysToRemove);
+  removeWorkspaceIndexFileKeys(index, resolvedName, sourceKeysToRemove);
   await writeWorkspaceIndex({ path: indexPath, index });
 
   const preservedDirs = buildPreservedDirectoriesSet(targetDir);
   const deletedAbsolutePaths = deleted.map(relativePath => path.join(targetDir, relativePath));
   await cleanupEmptyParents(targetDir, deletedAbsolutePaths, preservedDirs);
 
-  logger.info(`Selectively uninstalled from ${packageName}: removed ${deleted.length} files, updated ${updated.length} merged files`);
+  logger.info(`Selectively uninstalled from ${resolvedName}: removed ${deleted.length} files, updated ${updated.length} merged files`);
 
   return {
     success: true,

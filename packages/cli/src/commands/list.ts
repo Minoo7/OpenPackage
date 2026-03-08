@@ -83,7 +83,7 @@ function serializeProvenanceView(query: string, results: ProvenanceResult[]) {
       ...(r.packageName ? { packageName: r.packageName } : {}),
       ...(r.packageVersion ? { packageVersion: r.packageVersion } : {}),
       ...(r.packageSourcePath ? { packageSourcePath: r.packageSourcePath } : {}),
-      files: r.targetFiles,
+      files: r.files.map(f => f.target),
     })),
   };
 }

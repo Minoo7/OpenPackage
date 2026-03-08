@@ -7,6 +7,8 @@
  * Extracted from which-pipeline.ts for reuse by the `ls` command.
  */
 
+import path from 'path';
+
 import { resolveByName, type ResolutionCandidate } from './resource-resolver.js';
 import { traverseScopesFlat, type TraverseScopesOptions, type ResourceScope } from './scope-traversal.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
@@ -16,6 +18,8 @@ import { checkContentStatus, type ContentStatus } from '../list/content-status-c
 import { getMarkerFilename, toPluralKey, type ResourceTypeId } from './resource-registry.js';
 import type { ResolvedResource } from './resource-builder.js';
 import { parseResourceQuery } from './resource-query.js';
+import { getTargetPath } from '../../utils/workspace-index-helpers.js';
+import type { EnhancedFileMapping } from '../list/list-tree-renderer.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,11 +33,9 @@ export interface ProvenanceResult {
   packageName?: string;
   packageVersion?: string;
   packageSourcePath?: string;
-  targetFiles: string[];
-  /** Per-file content status when --status is active. Keyed by target file path. */
-  fileContentStatuses?: Record<string, ContentStatus>;
+  files: EnhancedFileMapping[];
   /** Aggregate resource-level status derived from file statuses (worst-wins). */
-  resourceStatus?: ContentStatus;
+  resourceStatus?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +87,7 @@ export async function resolveProvenance(
       resourceType: resource.resourceType,
       kind: resource.kind,
       scope: resource.scope,
-      targetFiles: resource.targetFiles,
+      files: [],
     };
 
     if (resource.kind === 'tracked' && resource.packageName) {
@@ -108,35 +110,83 @@ export async function resolveProvenance(
             result.packageSourcePath = pkgEntry.path;
           }
 
-          // Content status: filter files mapping to this resource's source keys
-          if (options?.status && resource.sourceKeys.size > 0) {
+          // Build EnhancedFileMapping[] from index file mappings for this resource's source keys
+          const filteredFiles: Record<string, (string | typeof pkgEntry.files[string][number])[]> = {};
+          for (const key of resource.sourceKeys) {
+            if (pkgEntry.files[key]) {
+              filteredFiles[key] = pkgEntry.files[key];
+            }
+          }
+
+          // Build file mappings with existence checks
+          const enhancedFiles: EnhancedFileMapping[] = [];
+          for (const [sourceKey, mappings] of Object.entries(filteredFiles)) {
+            for (const mapping of mappings) {
+              const targetPath = getTargetPath(mapping);
+              const fileExists = await exists(path.join(targetDir, targetPath));
+              enhancedFiles.push({
+                source: sourceKey,
+                target: targetPath,
+                exists: fileExists,
+                status: fileExists ? 'tracked' : 'missing',
+                scope: resource.scope,
+              });
+            }
+          }
+
+          // Content status enrichment when --status is active
+          if (options?.status && Object.keys(filteredFiles).length > 0) {
             const sourceRoot = resolveDeclaredPath(pkgEntry.path, targetDir).absolute;
             if (await exists(sourceRoot)) {
-              const filteredFiles: Record<string, (string | typeof pkgEntry.files[string][number])[]> = {};
-              for (const key of resource.sourceKeys) {
-                if (pkgEntry.files[key]) {
-                  filteredFiles[key] = pkgEntry.files[key];
-                }
-              }
-              if (Object.keys(filteredFiles).length > 0) {
-                const statusMap = await checkContentStatus(targetDir, sourceRoot, filteredFiles);
-                const fileStatuses: Record<string, ContentStatus> = {};
-                for (const [compositeKey, status] of statusMap) {
-                  // compositeKey is "sourceKey::targetPath" — extract targetPath
-                  const targetPath = compositeKey.split('::')[1];
-                  if (targetPath) fileStatuses[targetPath] = status;
-                }
-                if (Object.keys(fileStatuses).length > 0) {
-                  result.fileContentStatuses = fileStatuses;
-                  result.resourceStatus = deriveAggregateStatus(fileStatuses);
+              const statusMap = await checkContentStatus(targetDir, sourceRoot, filteredFiles);
+              for (const file of enhancedFiles) {
+                // Find matching status via "sourceKey::targetPath" composite key
+                const compositeKey = `${file.source}::${file.target}`;
+                const contentStatus = statusMap.get(compositeKey);
+                if (contentStatus) {
+                  file.contentStatus = contentStatus;
+                  // Derive file-level status from content status (same logic as scope-data-collector)
+                  if (!file.exists) {
+                    file.status = 'missing';
+                  } else if (contentStatus === 'modified') {
+                    file.status = 'modified';
+                  } else if (contentStatus === 'outdated') {
+                    file.status = 'outdated';
+                  } else if (contentStatus === 'diverged') {
+                    file.status = 'diverged';
+                  } else if (contentStatus === 'source-deleted') {
+                    file.status = 'outdated';
+                  } else if (contentStatus === 'clean') {
+                    file.status = 'clean';
+                  }
                 }
               }
             }
           }
+
+          result.files = enhancedFiles;
+          result.resourceStatus = deriveAggregateResourceStatus(enhancedFiles);
         }
       } catch {
-        // Provenance enrichment is best-effort
+        // Provenance enrichment is best-effort — fall back to basic file info
+        result.files = resource.targetFiles.map(tp => ({
+          source: tp,
+          target: tp,
+          exists: true,
+          status: 'tracked' as const,
+          scope: resource.scope,
+        }));
       }
+    } else if (resource.kind === 'untracked') {
+      // Untracked files were found by filesystem scan — they exist
+      result.files = resource.targetFiles.map(tp => ({
+        source: tp,
+        target: tp,
+        exists: true,
+        status: 'untracked' as const,
+        scope: resource.scope,
+      }));
+      result.resourceStatus = 'untracked';
     }
 
     results.push(result);
@@ -150,16 +200,16 @@ export async function resolveProvenance(
 // ---------------------------------------------------------------------------
 
 /**
- * Derive worst-wins aggregate status from per-file content statuses.
+ * Derive worst-wins aggregate status from EnhancedFileMapping statuses.
  */
-function deriveAggregateStatus(statuses: Record<string, ContentStatus>): ContentStatus | undefined {
-  const values = Object.values(statuses);
-  if (values.length === 0) return undefined;
-  if (values.includes('diverged')) return 'diverged';
-  if (values.includes('source-deleted')) return 'source-deleted';
-  if (values.includes('modified')) return 'modified';
-  if (values.includes('outdated')) return 'outdated';
-  if (values.includes('merged')) return 'merged';
+function deriveAggregateResourceStatus(files: EnhancedFileMapping[]): string | undefined {
+  if (files.length === 0) return undefined;
+  const statuses = files.map(f => f.status);
+  if (statuses.includes('diverged')) return 'diverged';
+  if (statuses.includes('modified')) return 'modified';
+  if (statuses.includes('outdated')) return 'outdated';
+  if (statuses.every(s => s === 'missing')) return 'missing';
+  if (statuses.every(s => s === 'untracked')) return 'untracked';
   return undefined;
 }
 

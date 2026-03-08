@@ -1,5 +1,5 @@
 import type { ListPackageReport, ListTreeNode } from './list-pipeline.js';
-import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, getTreeConnector, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
+import { flattenResourceGroups, renderFlatResourceList, renderFlatFileList, getChildPrefix, getTreeConnector, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
 import { formatScopeBadge, formatScopeBadgeAlways, formatPathForDisplay } from '../../utils/formatters.js';
 import type { ScopeResult, HeaderInfo } from './scope-data-collector.js';
 import type { ProvenanceResult } from '../resources/resource-provenance.js';
@@ -104,6 +104,30 @@ function formatFilePath(file: EnhancedFileMapping): string {
     return `~/${file.target}`;
   }
   return file.target;
+}
+
+/**
+ * Shared config factory for EnhancedFileMapping-based tree rendering.
+ * Used by both the resources view and the provenance view.
+ */
+function createEnhancedFileConfig(statusEnabled?: boolean): TreeRenderConfig<EnhancedFileMapping> {
+  return {
+    formatPath: (file) => formatFilePath(file),
+    isMissing: (file) => file.status === 'missing',
+    sortFiles: (a, b) => formatFilePath(a).localeCompare(formatFilePath(b)),
+    ...(statusEnabled && {
+      getFileStatusTag: (file: EnhancedFileMapping) => {
+        const tag = formatContentStatusTag(file.status);
+        if (tag) return tag;
+        if (file.contentStatus) {
+          const csTag = formatContentStatusTag(file.contentStatus);
+          if (csTag) return csTag;
+        }
+        if (file.status === 'untracked') return dim('[untracked]');
+        return undefined;
+      },
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +342,7 @@ export function printResourcesView(
     process.env.OPKG_LIST_SHOW_PACKAGE_LABELS === 'true';
 
   const config: TreeRenderConfig<EnhancedFileMapping> = {
-    formatPath: (file) => formatFilePath(file),
-    isMissing: (file) => file.status === 'missing',
-    sortFiles: (a, b) => formatFilePath(a).localeCompare(formatFilePath(b)),
+    ...createEnhancedFileConfig(statusEnabled),
     getResourceBadge: (scopes) => scopes ? dim(formatScopeBadgeAlways(scopes)) : '',
     ...(showPackageLabels && {
       getResourcePackageLabels: (packages) => {
@@ -331,16 +353,6 @@ export function printResourcesView(
       }
     }),
     ...(statusEnabled && {
-      getFileStatusTag: (file: EnhancedFileMapping) => {
-        const tag = formatContentStatusTag(file.status);
-        if (tag) return tag;
-        if (file.contentStatus) {
-          const csTag = formatContentStatusTag(file.contentStatus);
-          if (csTag) return csTag;
-        }
-        if (file.status === 'untracked') return dim('[untracked]');
-        return undefined;
-      },
       getResourceStatusTag: (resource: EnhancedResourceInfo) => {
         const tag = formatContentStatusTag(resource.status);
         if (tag) return tag;
@@ -402,11 +414,17 @@ function printProvenanceEntry(
   let statusSuffix = '';
   if (options.status && result.resourceStatus) {
     const tag = formatContentStatusTag(result.resourceStatus);
-    if (tag) statusSuffix = ` ${tag}`;
+    if (tag) {
+      statusSuffix = ` ${tag}`;
+    } else if (result.resourceStatus === 'missing') {
+      statusSuffix = ` ${red('[MISSING]')}`;
+    } else if (result.resourceStatus === 'untracked') {
+      statusSuffix = ` ${dim('[untracked]')}`;
+    }
   }
 
   // Only files create tree branches; source annotation is not a tree child
-  const hasFiles = !!options.files && result.targetFiles.length > 0;
+  const hasFiles = !!options.files && result.files.length > 0;
   const hasSourceLine = result.kind === 'tracked' && !!result.packageSourcePath;
 
   const connector = getTreeConnector(isLast, hasFiles);
@@ -420,19 +438,10 @@ function printProvenanceEntry(
     out.info(`${sourcePrefix}${dim(formatPathForDisplay(result.packageSourcePath!))}`);
   }
 
-  // Files (with -f)
+  // Files (with -f) — use shared rendering infrastructure
   if (hasFiles) {
-    const sorted = [...result.targetFiles].sort();
-    for (let i = 0; i < sorted.length; i++) {
-      const isLastFile = i === sorted.length - 1;
-      const fileConnector = getTreeConnector(isLastFile, false);
-      const filePath = formatPathForDisplay(sorted[i]);
-      let fileStatusTag = '';
-      if (options.status && result.fileContentStatuses) {
-        const tag = formatContentStatusTag(result.fileContentStatuses[sorted[i]]);
-        if (tag) fileStatusTag = ` ${tag}`;
-      }
-      out.info(`${childPrefix}${fileConnector}${dim(filePath)}${fileStatusTag}`);
-    }
+    const config = createEnhancedFileConfig(options.status);
+    const sortedFiles = [...result.files].sort(config.sortFiles);
+    renderFlatFileList(sortedFiles, childPrefix, config, out);
   }
 }

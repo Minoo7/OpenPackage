@@ -6,11 +6,33 @@
 
 import { join } from 'path';
 import { exists, isDirectory } from './fs.js';
+import type { ResourceTypeId } from '../types/resources.js';
 
 /**
  * Entity type classification
  */
 export type EntityType = 'workspace' | 'package' | 'resource';
+
+/**
+ * Detect whether a directory IS a single resource (skill, plugin, etc.)
+ * rather than a package containing multiple resources.
+ *
+ * Returns the resource type if the directory is a single resource, or null
+ * if it's a package/workspace/unknown.
+ */
+export async function detectSingleResourceType(path: string): Promise<ResourceTypeId | null> {
+  // Package markers take priority — never treat a package as a single resource
+  if (await exists(join(path, 'openpackage.yml'))) return null;
+  if (await exists(join(path, '.openpackage', 'openpackage.yml'))) return null;
+
+  // Skill: has SKILL.md at root
+  if (await exists(join(path, 'SKILL.md'))) return 'skill';
+
+  // Plugin: has .claude-plugin/plugin.json
+  if (await exists(join(path, '.claude-plugin', 'plugin.json'))) return 'plugin';
+
+  return null;
+}
 
 /**
  * Detect the type of entity at a given path.
@@ -34,6 +56,14 @@ export async function detectEntityType(path: string): Promise<EntityType> {
   const packageMarker = join(path, 'openpackage.yml');
   if (await exists(packageMarker)) {
     return 'package';
+  }
+
+  // Check if this directory IS a single resource (skill dir, plugin dir, etc.)
+  // This must come before the resource-dir heuristic, otherwise a skill dir
+  // containing agents/ would be misclassified as a package.
+  const singleType = await detectSingleResourceType(path);
+  if (singleType !== null) {
+    return 'resource';
   }
 
   // Check for Claude plugin characteristics (.claude-plugin/plugin.json)

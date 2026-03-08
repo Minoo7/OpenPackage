@@ -6,15 +6,16 @@
  * install state. Display is handled by the CLI command layer.
  */
 
-import { join } from 'path';
+import { join, basename } from 'path';
 import { resolvePackageByName, type PackageSourceType } from '../package-name-resolution.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
 import { exists } from '../../utils/fs.js';
-import { detectEntityType } from '../../utils/entity-detector.js';
+import { detectEntityType, detectSingleResourceType } from '../../utils/entity-detector.js';
+import { toPluralKey } from '../resources/resource-registry.js';
 import { formatPathForDisplay } from '../../utils/formatters.js';
 import { logger } from '../../utils/logger.js';
 import { collectFiles } from '../list/remote-list-resolver.js';
-import { groupFilesIntoResources, appendMarketplacePluginGroup, type ListFileMapping, type ListPackageReport } from '../list/list-pipeline.js';
+import { groupFilesIntoResources, appendMarketplacePluginGroup, type ListFileMapping, type ListPackageReport, type ListResourceGroup } from '../list/list-pipeline.js';
 import { extractMetadataFromManifest, type ViewMetadataEntry } from '../list/list-printers.js';
 import { resolveDeclaredPath } from '../../utils/path-resolution.js';
 import { classifyInput } from '../install/preprocessing/index.js';
@@ -76,7 +77,7 @@ export interface ViewPipelineOptions {
  * Build a LocalPackageResult from a resolved package directory.
  * Shared by Tier 1 (workspace index) and Tier 2 (resolvePackageByName).
  */
-async function buildLocalPackageResult(
+export async function buildLocalPackageResult(
   packageName: string,
   packageDir: string,
   version?: string,
@@ -110,7 +111,25 @@ async function buildLocalPackageResult(
     target: join(packageDir, f),
     exists: true
   }));
-  let resourceGroups = fileList.length > 0 ? groupFilesIntoResources(fileList) : undefined;
+  const singleResourceType = await detectSingleResourceType(packageDir);
+  let resourceGroups: ListResourceGroup[] | undefined;
+
+  if (singleResourceType && fileList.length > 0) {
+    // Directory IS a single resource — wrap all files into one resource group
+    const pluralKey = toPluralKey(singleResourceType);
+    const resourceName = `${pluralKey}/${basename(packageDir)}`;
+    resourceGroups = [{
+      resourceType: pluralKey,
+      resources: [{
+        name: resourceName,
+        resourceType: pluralKey,
+        files: fileList,
+      }],
+    }];
+  } else {
+    resourceGroups = fileList.length > 0 ? groupFilesIntoResources(fileList) : undefined;
+  }
+
   resourceGroups = await appendMarketplacePluginGroup(resourceGroups, packageDir);
 
   const headerType = await detectEntityType(packageDir);

@@ -72,6 +72,12 @@ const testFiles: string[] = [
   'tests/core/list/untracked-files.test.ts',
   'tests/core/list/group-files-into-resources.test.ts',
 
+  // Core - View
+  'tests/core/view/view-single-resource.test.ts',
+
+  // Core - Utils
+  'tests/core/utils/entity-detector.test.ts',
+
   // Core - Resources
   'tests/core/resources/resource-namespace.test.ts',
   'tests/core/resources/resource-classifier.test.ts',

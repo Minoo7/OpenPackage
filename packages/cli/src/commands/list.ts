@@ -266,7 +266,7 @@ async function handleResourceProvenance(
     ...(options.project && { projectOnly: true }),
   };
 
-  const provenanceResults = await resolveProvenance(input, traverseOpts);
+  const provenanceResults = await resolveProvenance(input, traverseOpts, { status: !!options.status });
 
   if (provenanceResults.length === 0) {
     if (options.json) {
@@ -283,7 +283,7 @@ async function handleResourceProvenance(
     return { success: true };
   }
 
-  printProvenanceView(input, provenanceResults, { files: !!options.files });
+  printProvenanceView(input, provenanceResults, { files: !!options.files, status: !!options.status });
   return { success: true };
 }
 

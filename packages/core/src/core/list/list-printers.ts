@@ -51,6 +51,21 @@ export function sectionHeader(title: string, count: number): string {
   return `${cyan(`[${title}]`)} ${dim(`(${count})`)}`;
 }
 
+/**
+ * Map a content status value to its colored tag. Returns undefined for 'clean'
+ * or unrecognized values. Shared by deps, resources, and provenance views.
+ */
+function formatContentStatusTag(status: string): string | undefined {
+  switch (status) {
+    case 'diverged': return red('[diverged]');
+    case 'modified': return yellow('[modified]');
+    case 'outdated': return cyan('[outdated]');
+    case 'source-deleted': return red('[deleted from source]');
+    case 'merged': return dim('[merged]');
+    default: return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
@@ -110,16 +125,9 @@ function printFileList(
     let label: string;
     if (!file.exists) {
       label = `${dim(file.target)} ${red('[MISSING]')}`;
-    } else if (statusEnabled && file.contentStatus === 'diverged') {
-      label = `${dim(file.target)} ${red('[diverged]')}`;
-    } else if (statusEnabled && file.contentStatus === 'modified') {
-      label = `${dim(file.target)} ${yellow('[modified]')}`;
-    } else if (statusEnabled && file.contentStatus === 'outdated') {
-      label = `${dim(file.target)} ${cyan('[outdated]')}`;
-    } else if (statusEnabled && file.contentStatus === 'source-deleted') {
-      label = `${dim(file.target)} ${red('[deleted from source]')}`;
-    } else if (statusEnabled && file.contentStatus === 'merged') {
-      label = `${dim(file.target)} ${dim('[merged]')}`;
+    } else if (statusEnabled && file.contentStatus) {
+      const tag = formatContentStatusTag(file.contentStatus);
+      label = tag ? `${dim(file.target)} ${tag}` : dim(file.target);
     } else {
       label = dim(file.target);
     }
@@ -324,18 +332,18 @@ export function printResourcesView(
     }),
     ...(statusEnabled && {
       getFileStatusTag: (file: EnhancedFileMapping) => {
-        if (file.status === 'diverged') return red('[diverged]');
-        if (file.status === 'modified') return yellow('[modified]');
-        if (file.status === 'outdated') return cyan('[outdated]');
-        if (file.contentStatus === 'source-deleted') return red('[deleted from source]');
+        const tag = formatContentStatusTag(file.status);
+        if (tag) return tag;
+        if (file.contentStatus) {
+          const csTag = formatContentStatusTag(file.contentStatus);
+          if (csTag) return csTag;
+        }
         if (file.status === 'untracked') return dim('[untracked]');
-        if (file.contentStatus === 'merged') return dim('[merged]');
         return undefined;
       },
       getResourceStatusTag: (resource: EnhancedResourceInfo) => {
-        if (resource.status === 'diverged') return red('[diverged]');
-        if (resource.status === 'modified') return yellow('[modified]');
-        if (resource.status === 'outdated') return cyan('[outdated]');
+        const tag = formatContentStatusTag(resource.status);
+        if (tag) return tag;
         if (resource.status === 'untracked') return dim('[untracked]');
         if (resource.status === 'missing') return red('[MISSING]');
         return undefined;
@@ -359,7 +367,7 @@ export function printResourcesView(
 export function printProvenanceView(
   resourceQuery: string,
   results: ProvenanceResult[],
-  options: { files?: boolean },
+  options: { files?: boolean; status?: boolean },
   output?: OutputPort
 ): void {
   const out = output ?? resolveOutput();
@@ -376,7 +384,7 @@ function printProvenanceEntry(
   result: ProvenanceResult,
   index: number,
   total: number,
-  options: { files?: boolean },
+  options: { files?: boolean; status?: boolean },
   out: OutputPort
 ): void {
   const isLast = index === total - 1;
@@ -390,6 +398,13 @@ function printProvenanceEntry(
   const scopeBadge = formatScopeBadge(result.scope);
   const scopeSuffix = scopeBadge ? ` ${dim(scopeBadge)}` : '';
 
+  // Aggregate status tag (pre-computed in data layer)
+  let statusSuffix = '';
+  if (options.status && result.resourceStatus) {
+    const tag = formatContentStatusTag(result.resourceStatus);
+    if (tag) statusSuffix = ` ${tag}`;
+  }
+
   // Only files create tree branches; source annotation is not a tree child
   const hasFiles = !!options.files && result.targetFiles.length > 0;
   const hasSourceLine = result.kind === 'tracked' && !!result.packageSourcePath;
@@ -397,7 +412,7 @@ function printProvenanceEntry(
   const connector = getTreeConnector(isLast, hasFiles);
   const childPrefix = getChildPrefix('', isLast);
 
-  out.info(`${connector}${entryName}${scopeSuffix}`);
+  out.info(`${connector}${entryName}${scopeSuffix}${statusSuffix}`);
 
   // Source path annotation (tracked only) — same pattern as package labels in renderResource
   if (hasSourceLine) {
@@ -411,7 +426,13 @@ function printProvenanceEntry(
     for (let i = 0; i < sorted.length; i++) {
       const isLastFile = i === sorted.length - 1;
       const fileConnector = getTreeConnector(isLastFile, false);
-      out.info(`${childPrefix}${fileConnector}${dim(formatPathForDisplay(sorted[i]))}`);
+      const filePath = formatPathForDisplay(sorted[i]);
+      let fileStatusTag = '';
+      if (options.status && result.fileContentStatuses) {
+        const tag = formatContentStatusTag(result.fileContentStatuses[sorted[i]]);
+        if (tag) fileStatusTag = ` ${tag}`;
+      }
+      out.info(`${childPrefix}${fileConnector}${dim(filePath)}${fileStatusTag}`);
     }
   }
 }

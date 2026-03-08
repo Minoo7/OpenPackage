@@ -10,6 +10,9 @@
 import { resolveByName, type ResolutionCandidate } from './resource-resolver.js';
 import { traverseScopesFlat, type TraverseScopesOptions, type ResourceScope } from './scope-traversal.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
+import { resolveDeclaredPath } from '../../utils/path-resolution.js';
+import { exists } from '../../utils/fs.js';
+import { checkContentStatus, type ContentStatus } from '../list/content-status-checker.js';
 import { getMarkerFilename, toPluralKey, type ResourceTypeId } from './resource-registry.js';
 import type { ResolvedResource } from './resource-builder.js';
 import { parseResourceQuery } from './resource-query.js';
@@ -27,6 +30,10 @@ export interface ProvenanceResult {
   packageVersion?: string;
   packageSourcePath?: string;
   targetFiles: string[];
+  /** Per-file content status when --status is active. Keyed by target file path. */
+  fileContentStatuses?: Record<string, ContentStatus>;
+  /** Aggregate resource-level status derived from file statuses (worst-wins). */
+  resourceStatus?: ContentStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,7 +45,8 @@ export interface ProvenanceResult {
  */
 export async function resolveProvenance(
   input: string,
-  traverseOpts: TraverseScopesOptions
+  traverseOpts: TraverseScopesOptions,
+  options?: { status?: boolean }
 ): Promise<ProvenanceResult[]> {
   const query = parseResourceQuery(input);
 
@@ -99,6 +107,32 @@ export async function resolveProvenance(
           } else {
             result.packageSourcePath = pkgEntry.path;
           }
+
+          // Content status: filter files mapping to this resource's source keys
+          if (options?.status && resource.sourceKeys.size > 0) {
+            const sourceRoot = resolveDeclaredPath(pkgEntry.path, targetDir).absolute;
+            if (await exists(sourceRoot)) {
+              const filteredFiles: Record<string, (string | typeof pkgEntry.files[string][number])[]> = {};
+              for (const key of resource.sourceKeys) {
+                if (pkgEntry.files[key]) {
+                  filteredFiles[key] = pkgEntry.files[key];
+                }
+              }
+              if (Object.keys(filteredFiles).length > 0) {
+                const statusMap = await checkContentStatus(targetDir, sourceRoot, filteredFiles);
+                const fileStatuses: Record<string, ContentStatus> = {};
+                for (const [compositeKey, status] of statusMap) {
+                  // compositeKey is "sourceKey::targetPath" — extract targetPath
+                  const targetPath = compositeKey.split('::')[1];
+                  if (targetPath) fileStatuses[targetPath] = status;
+                }
+                if (Object.keys(fileStatuses).length > 0) {
+                  result.fileContentStatuses = fileStatuses;
+                  result.resourceStatus = deriveAggregateStatus(fileStatuses);
+                }
+              }
+            }
+          }
         }
       } catch {
         // Provenance enrichment is best-effort
@@ -114,6 +148,20 @@ export async function resolveProvenance(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Derive worst-wins aggregate status from per-file content statuses.
+ */
+function deriveAggregateStatus(statuses: Record<string, ContentStatus>): ContentStatus | undefined {
+  const values = Object.values(statuses);
+  if (values.length === 0) return undefined;
+  if (values.includes('diverged')) return 'diverged';
+  if (values.includes('source-deleted')) return 'source-deleted';
+  if (values.includes('modified')) return 'modified';
+  if (values.includes('outdated')) return 'outdated';
+  if (values.includes('merged')) return 'merged';
+  return undefined;
+}
 
 /**
  * Compute the resource's relative path within its package.

@@ -1,7 +1,8 @@
 import type { ListPackageReport, ListTreeNode } from './list-pipeline.js';
 import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
-import { formatScopeBadge } from '../../utils/formatters.js';
+import { formatScopeBadge, formatScopeBadgeAlways, formatPathForDisplay } from '../../utils/formatters.js';
 import type { ScopeResult, HeaderInfo } from './scope-data-collector.js';
+import type { ProvenanceResult } from '../resources/resource-provenance.js';
 import type { ViewMetadataEntry } from './view-metadata.js';
 import type { OutputPort } from '../ports/output.js';
 import { resolveOutput } from '../ports/resolve.js';
@@ -127,6 +128,36 @@ function printFileList(
 }
 
 // ---------------------------------------------------------------------------
+// Header rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Print the header line for a list view (deps or resources).
+ * Shows `name@version [scope]` for package-scoped headers,
+ * or `name@version (path) [type]` for workspace/fallback headers.
+ */
+function printListHeader(
+  headerInfo: HeaderInfo | undefined,
+  fallbackResult: { headerName: string; headerVersion?: string; headerPath: string; headerType: string } | undefined,
+  out: OutputPort
+): void {
+  if (headerInfo) {
+    const version = headerInfo.version ? `@${headerInfo.version}` : '';
+    if (headerInfo.scope) {
+      const scopeBadge = dim(formatScopeBadgeAlways(headerInfo.scope));
+      out.info(`${headerInfo.name}${version} ${scopeBadge}`);
+    } else {
+      const typeTag = dim(`[${headerInfo.type}]`);
+      out.info(`${headerInfo.name}${version} ${dim(`(${headerInfo.path})`)} ${typeTag}`);
+    }
+  } else if (fallbackResult) {
+    const version = fallbackResult.headerVersion ? `@${fallbackResult.headerVersion}` : '';
+    const typeTag = dim(`[${fallbackResult.headerType}]`);
+    out.info(`${fallbackResult.headerName}${version} ${dim(`(${fallbackResult.headerPath})`)} ${typeTag}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Deps view
 // ---------------------------------------------------------------------------
 
@@ -217,17 +248,7 @@ export function printDepsView(
     packageMap.delete(name);
   }
 
-  // Print header showing workspace/package name and path
-  if (headerInfo) {
-    const version = headerInfo.version ? `@${headerInfo.version}` : '';
-    const typeTag = dim(`[${headerInfo.type}]`);
-    out.info(`${headerInfo.name}${version} ${dim(`(${headerInfo.path})`)} ${typeTag}`);
-  } else if (results.length > 0) {
-    const firstResult = results[0].result;
-    const version = firstResult.headerVersion ? `@${firstResult.headerVersion}` : '';
-    const typeTag = dim(`[${firstResult.headerType}]`);
-    out.info(`${firstResult.headerName}${version} ${dim(`(${firstResult.headerPath})`)} ${typeTag}`);
-  }
+  printListHeader(headerInfo, results.length > 0 ? results[0].result : undefined, out);
 
   const entries = Array.from(packageMap.values())
     .sort((a, b) => a.report.name.localeCompare(b.report.name));
@@ -280,12 +301,7 @@ export function printResourcesView(
   statusEnabled?: boolean
 ): void {
   const out = output ?? resolveOutput();
-  // Print header showing workspace/package name and path if provided
-  if (headerInfo) {
-    const version = headerInfo.version ? `@${headerInfo.version}` : '';
-    const typeTag = dim(`[${headerInfo.type}]`);
-    out.info(`${headerInfo.name}${version} ${dim(`(${headerInfo.path})`)} ${typeTag}`);
-  }
+  printListHeader(headerInfo, undefined, out);
 
   // Show package label only when listing workspace (not a specific package).
   // Temporarily disabled behind feature flag; set OPKG_LIST_SHOW_PACKAGE_LABELS=true to enable.
@@ -297,7 +313,7 @@ export function printResourcesView(
     formatPath: (file) => formatFilePath(file),
     isMissing: (file) => file.status === 'missing',
     sortFiles: (a, b) => formatFilePath(a).localeCompare(formatFilePath(b)),
-    getResourceBadge: (scopes) => scopes ? dim(formatScopeBadge(scopes)) : '',
+    getResourceBadge: (scopes) => scopes ? dim(formatScopeBadgeAlways(scopes)) : '',
     ...(showPackageLabels && {
       getResourcePackageLabels: (packages) => {
         if (!packages || packages.size === 0) return [];
@@ -330,4 +346,55 @@ export function printResourcesView(
   const flatResources = flattenResourceGroups(groups);
   out.info(sectionHeader('Installed', flatResources.length));
   renderFlatResourceList(flatResources, '', showFiles, config);
+}
+
+// ---------------------------------------------------------------------------
+// Resource provenance view
+// ---------------------------------------------------------------------------
+
+/**
+ * Print resource provenance results (which package(s) installed a resource).
+ * Caller is responsible for empty-results messaging; this is a pure renderer.
+ */
+export function printProvenanceView(
+  results: ProvenanceResult[],
+  options: { files?: boolean },
+  output?: OutputPort
+): void {
+  const out = output ?? resolveOutput();
+
+  for (const result of results) {
+    printProvenanceEntry(result, options, out);
+  }
+}
+
+function printProvenanceEntry(
+  result: ProvenanceResult,
+  options: { files?: boolean },
+  out: OutputPort
+): void {
+  const untrackedTag = result.kind === 'untracked' ? ' [untracked]' : '';
+  const globalTag = result.scope === 'global' ? ` ${dim('[global]')}` : '';
+  out.info(`${result.resourceName} ${dim(`(${result.resourceType})`)}${untrackedTag}${globalTag}`);
+
+  if (result.kind === 'untracked') {
+    out.info(`  ${dim('Not installed from any package')}`);
+    return;
+  }
+
+  if (result.packageName) {
+    const version = result.packageVersion ? `@${result.packageVersion}` : '';
+    out.info(`  ${dim('Package:')}  ${result.packageName}${version}`);
+  }
+
+  if (result.packageSourcePath) {
+    out.info(`  ${dim('Source:')}   ${formatPathForDisplay(result.packageSourcePath)}`);
+  }
+
+  if (options.files && result.targetFiles.length > 0) {
+    out.info(`  ${dim('Files:')}`);
+    for (const file of result.targetFiles) {
+      out.info(`    ${formatPathForDisplay(file)}`);
+    }
+  }
 }

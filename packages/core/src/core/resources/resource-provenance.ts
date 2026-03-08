@@ -1,22 +1,24 @@
 /**
- * Which Pipeline
+ * Resource Provenance
  *
- * Core logic for `opkg which <resource-name>`.
  * Resolves a resource name to the package(s) that installed it,
  * enriched with provenance from the workspace index.
+ *
+ * Extracted from which-pipeline.ts for reuse by the `ls` command.
  */
 
-import { resolveByName, type ResolutionCandidate } from '../resources/resource-resolver.js';
-import { traverseScopesFlat, type TraverseScopesOptions, type ResourceScope } from '../resources/scope-traversal.js';
+import { resolveByName, type ResolutionCandidate } from './resource-resolver.js';
+import { traverseScopesFlat, type TraverseScopesOptions, type ResourceScope } from './scope-traversal.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
-import { normalizeType, getMarkerFilename, toPluralKey, type ResourceTypeId } from '../resources/resource-registry.js';
-import type { ResolvedResource } from '../resources/resource-builder.js';
+import { getMarkerFilename, toPluralKey, type ResourceTypeId } from './resource-registry.js';
+import type { ResolvedResource } from './resource-builder.js';
+import { parseResourceQuery } from './resource-query.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface WhichResult {
+export interface ProvenanceResult {
   resourceName: string;
   resourceType: string;
   kind: 'tracked' | 'untracked';
@@ -27,47 +29,6 @@ export interface WhichResult {
   targetFiles: string[];
 }
 
-export interface WhichQuery {
-  /** Raw input from user */
-  raw: string;
-  /** Extracted resource name */
-  name: string;
-  /** Optional type filter from qualified input (e.g. "skills/skill-dev" → "skill") */
-  typeFilter?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Query parsing
-// ---------------------------------------------------------------------------
-
-/**
- * Parse a user query into name + optional type filter.
- *
- * - Bare name: `skill-dev` → { name: "skill-dev" }
- * - Qualified:  `skills/skill-dev` → { name: "skill-dev", typeFilter: "skill" }
- */
-export function parseWhichQuery(input: string): WhichQuery {
-  const slashIndex = input.indexOf('/');
-  if (slashIndex === -1) {
-    return { raw: input, name: input };
-  }
-
-  const prefix = input.slice(0, slashIndex);
-  const name = input.slice(slashIndex + 1);
-
-  if (!name) {
-    return { raw: input, name: input };
-  }
-
-  const typeFilter = normalizeType(prefix);
-  // If normalizeType falls back to 'other', the prefix wasn't a known type
-  if (typeFilter === 'other') {
-    return { raw: input, name: input };
-  }
-
-  return { raw: input, name, typeFilter };
-}
-
 // ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
@@ -75,11 +36,11 @@ export function parseWhichQuery(input: string): WhichQuery {
 /**
  * Resolve which package(s) a resource belongs to.
  */
-export async function resolveWhich(
+export async function resolveProvenance(
   input: string,
   traverseOpts: TraverseScopesOptions
-): Promise<WhichResult[]> {
-  const query = parseWhichQuery(input);
+): Promise<ProvenanceResult[]> {
+  const query = parseResourceQuery(input);
 
   // Collect candidates paired with their targetDir for provenance lookup
   const paired: Array<{ candidate: ResolutionCandidate; targetDir: string }> = [];
@@ -107,11 +68,11 @@ export async function resolveWhich(
 
   // Enrich with provenance — cache workspace index reads per targetDir
   const indexCache = new Map<string, Awaited<ReturnType<typeof readWorkspaceIndex>>>();
-  const results: WhichResult[] = [];
+  const results: ProvenanceResult[] = [];
 
   for (const { candidate, targetDir } of filtered) {
     const resource = candidate.resource!;
-    const result: WhichResult = {
+    const result: ProvenanceResult = {
       resourceName: resource.resourceName,
       resourceType: resource.resourceType,
       kind: resource.kind,

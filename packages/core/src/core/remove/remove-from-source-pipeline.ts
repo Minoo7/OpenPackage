@@ -128,6 +128,13 @@ export async function runRemoveFromSourcePipeline(
 
     const resource = resolved[0].candidate.resource!;
 
+    if (resource.kind === 'untracked' || !resource.packageName) {
+      return {
+        success: false,
+        error: `Resource "${resolvedPath}" is not tracked by any package and cannot be removed from a package source.\nUse a file path instead, e.g.: opkg remove ./path/to/file --from ${resolvedName}`,
+      };
+    }
+
     // Collect removal entries from resource's sourceKeys
     const entries: RemovalEntry[] = [];
     for (const sourceKey of resource.sourceKeys) {
@@ -138,7 +145,7 @@ export async function runRemoveFromSourcePipeline(
     }
 
     if (entries.length === 0) {
-      return { success: false, error: `No source files found for resource "${resolvedPath}".` };
+      return { success: false, error: `No source files found for resource "${resolvedPath}" in package "${resolvedName}".` };
     }
 
     options.beforeConfirm?.({ packageName: resolvedName, sourcePath: packageRootDir });

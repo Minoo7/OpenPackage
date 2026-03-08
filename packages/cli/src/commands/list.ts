@@ -283,7 +283,7 @@ async function handleResourceProvenance(
     return { success: true };
   }
 
-  printProvenanceView(provenanceResults, { files: !!options.files });
+  printProvenanceView(input, provenanceResults, { files: !!options.files });
   return { success: true };
 }
 

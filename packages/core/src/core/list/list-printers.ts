@@ -1,5 +1,5 @@
 import type { ListPackageReport, ListTreeNode } from './list-pipeline.js';
-import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
+import { flattenResourceGroups, renderFlatResourceList, getChildPrefix, getTreeConnector, type TreeRenderConfig, type EnhancedFileMapping, type EnhancedResourceInfo, type EnhancedResourceGroup, type ResourceScope } from './list-tree-renderer.js';
 import { formatScopeBadge, formatScopeBadgeAlways, formatPathForDisplay } from '../../utils/formatters.js';
 import type { ScopeResult, HeaderInfo } from './scope-data-collector.js';
 import type { ProvenanceResult } from '../resources/resource-provenance.js';
@@ -357,44 +357,61 @@ export function printResourcesView(
  * Caller is responsible for empty-results messaging; this is a pure renderer.
  */
 export function printProvenanceView(
+  resourceQuery: string,
   results: ProvenanceResult[],
   options: { files?: boolean },
   output?: OutputPort
 ): void {
   const out = output ?? resolveOutput();
 
-  for (const result of results) {
-    printProvenanceEntry(result, options, out);
+  out.info(resourceQuery);
+  out.info(sectionHeader('Installed', results.length));
+
+  for (let i = 0; i < results.length; i++) {
+    printProvenanceEntry(results[i], i, results.length, options, out);
   }
 }
 
 function printProvenanceEntry(
   result: ProvenanceResult,
+  index: number,
+  total: number,
   options: { files?: boolean },
   out: OutputPort
 ): void {
-  const untrackedTag = result.kind === 'untracked' ? ' [untracked]' : '';
-  const globalTag = result.scope === 'global' ? ` ${dim('[global]')}` : '';
-  out.info(`${result.resourceName} ${dim(`(${result.resourceType})`)}${untrackedTag}${globalTag}`);
+  const isLast = index === total - 1;
 
-  if (result.kind === 'untracked') {
-    out.info(`  ${dim('Not installed from any package')}`);
-    return;
+  // Entry name: "pkg@version" (tracked) or "(untracked)"
+  const entryName = result.kind === 'tracked'
+    ? `${result.packageName}${result.packageVersion ? `@${result.packageVersion}` : ''}`
+    : '(untracked)';
+
+  // Scope badge
+  const scopeBadge = formatScopeBadge(result.scope);
+  const scopeSuffix = scopeBadge ? ` ${dim(scopeBadge)}` : '';
+
+  // Only files create tree branches; source annotation is not a tree child
+  const hasFiles = !!options.files && result.targetFiles.length > 0;
+  const hasSourceLine = result.kind === 'tracked' && !!result.packageSourcePath;
+
+  const connector = getTreeConnector(isLast, hasFiles);
+  const childPrefix = getChildPrefix('', isLast);
+
+  out.info(`${connector}${entryName}${scopeSuffix}`);
+
+  // Source path annotation (tracked only) — same pattern as package labels in renderResource
+  if (hasSourceLine) {
+    const sourcePrefix = hasFiles ? childPrefix + '│ ' : childPrefix + '  ';
+    out.info(`${sourcePrefix}${dim(formatPathForDisplay(result.packageSourcePath!))}`);
   }
 
-  if (result.packageName) {
-    const version = result.packageVersion ? `@${result.packageVersion}` : '';
-    out.info(`  ${dim('Package:')}  ${result.packageName}${version}`);
-  }
-
-  if (result.packageSourcePath) {
-    out.info(`  ${dim('Source:')}   ${formatPathForDisplay(result.packageSourcePath)}`);
-  }
-
-  if (options.files && result.targetFiles.length > 0) {
-    out.info(`  ${dim('Files:')}`);
-    for (const file of result.targetFiles) {
-      out.info(`    ${formatPathForDisplay(file)}`);
+  // Files (with -f)
+  if (hasFiles) {
+    const sorted = [...result.targetFiles].sort();
+    for (let i = 0; i < sorted.length; i++) {
+      const isLastFile = i === sorted.length - 1;
+      const fileConnector = getTreeConnector(isLastFile, false);
+      out.info(`${childPrefix}${fileConnector}${dim(formatPathForDisplay(sorted[i]))}`);
     }
   }
 }

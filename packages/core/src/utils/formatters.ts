@@ -222,6 +222,21 @@ export function formatScopeBadge(scopes: Set<string> | string): string {
 }
 
 /**
+ * Format one or more scopes as a badge, always showing the scope.
+ * Unlike formatScopeBadge (which hides [project]), this always returns [project] or [global].
+ */
+export function formatScopeBadgeAlways(scopes: Set<string> | string): string {
+  if (typeof scopes === 'string') {
+    return scopes === 'global' ? '[global]' : '[project]';
+  }
+  const hasGlobal = scopes.has('global');
+  const hasProject = scopes.has('project');
+  if (hasGlobal && hasProject) return '[project] [global]';
+  if (hasGlobal) return '[global]';
+  return '[project]';
+}
+
+/**
  * Display package configuration details in a consistent format
  */
 export function displayPackageConfig(packageConfig: PackageYml, path: string, isExisting: boolean = false, output?: OutputPort): void {

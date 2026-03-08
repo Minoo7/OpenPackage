@@ -34,6 +34,8 @@ export interface HeaderInfo {
   version?: string;
   path: string;
   type: 'workspace' | 'package' | 'resource';
+  /** When set, header renders scope badge instead of path + type tag. */
+  scope?: ResourceScope;
 }
 
 interface ListPipelineOptions {

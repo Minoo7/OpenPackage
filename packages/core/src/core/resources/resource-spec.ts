@@ -10,7 +10,7 @@
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { OutputPort } from '../ports/output.js';
 import type { PromptPort } from '../ports/prompt.js';
-import { parseWhichQuery, type WhichQuery } from '../which/which-pipeline.js';
+import { parseResourceQuery, type ResourceQuery } from './resource-query.js';
 import { resolveByName, formatCandidateTitle, formatCandidateDescription, getCandidateScope, type ResolutionCandidate } from './resource-resolver.js';
 import { traverseScopesFlat, type TraverseScopesOptions } from './scope-traversal.js';
 import { disambiguate, type DisambiguationOptions } from './disambiguation-prompt.js';
@@ -24,7 +24,7 @@ import { expandTildePath } from '../../utils/path-resolution.js';
 
 export type ResourceSpecClassification =
   | { kind: 'explicit-path' }
-  | { kind: 'resource-ref'; query: WhichQuery }
+  | { kind: 'resource-ref'; query: ResourceQuery }
   | { kind: 'other' };
 
 /**
@@ -35,7 +35,7 @@ export type ResourceSpecClassification =
  * Rules (in priority order):
  * 1. `./`, `../`, `/`, `~/` prefix (or `.` / `~` alone) → explicit-path
  * 2. Trailing `/` → other (directory intent)
- * 3. Known type prefix via `parseWhichQuery()` with non-empty name → resource-ref
+ * 3. Known type prefix via `parseResourceQuery()` with non-empty name → resource-ref
  * 4. Everything else → other
  */
 export function classifyResourceSpec(input: string): ResourceSpecClassification {
@@ -57,7 +57,7 @@ export function classifyResourceSpec(input: string): ResourceSpecClassification 
   }
 
   // Rule 3: known type prefix
-  const query = parseWhichQuery(input);
+  const query = parseResourceQuery(input);
   if (query.typeFilter && query.name) {
     return { kind: 'resource-ref', query };
   }
@@ -87,7 +87,7 @@ export interface ResolveResourceSpecOptions extends DisambiguationOptions {
 /**
  * Resolve a user-provided resource spec to concrete candidates.
  *
- * Composes: parseWhichQuery → traverseScopesFlat(resolveByName) → filter → disambiguate.
+ * Composes: parseResourceQuery → traverseScopesFlat(resolveByName) → filter → disambiguate.
  *
  * @param input - User-provided resource spec (e.g., `agents/foo`, `foo`)
  * @param traverseOpts - Scope traversal options
@@ -101,7 +101,7 @@ export async function resolveResourceSpec(
   options?: ResolveResourceSpecOptions,
   ctx?: ExecutionContext,
 ): Promise<ResolvedTarget[]> {
-  const query = parseWhichQuery(input);
+  const query = parseResourceQuery(input);
 
   // Resolve candidates across scopes
   const paired: ResolvedTarget[] = [];

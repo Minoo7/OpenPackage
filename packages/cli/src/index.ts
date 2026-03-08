@@ -90,7 +90,7 @@ program
       
       // All commands section - ultra compact
       output += 'All commands:\n\n';
-      output += '    install, uninstall, list, which,\n';
+      output += '    install, uninstall, list,\n';
       output += '    new, add, remove, sync, set,\n';
       output += '    publish, unpublish, search, view,\n';
       output += '    login, logout, config\n\n';
@@ -260,7 +260,7 @@ program
   .command('list')
   .alias('ls')
   .description('List installed resources and packages')
-  .argument('[resource-spec]', 'filter by a specific installed package')
+  .argument('[package]', 'filter by package or resource name')
   .option('-g, --global', 'list global scope only')
   .option('--project', 'list project scope only')
   .option('-d, --deps', 'show dependency tree (full tree including transitive dependencies)')
@@ -300,18 +300,6 @@ program
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupViewCommand } = await import('./commands/view.js');
     await setupViewCommand(args);
-  }));
-
-program
-  .command('which')
-  .description('Show which package installed a resource')
-  .argument('<resource-name>', 'resource to look up (e.g., "skill-dev", "skills/skill-dev")')
-  .option('-s, --scope <scope>', 'workspace scope: project or global (default: both)')
-  .option('-f, --files', 'show individual file paths')
-  .option('--json', 'output results as JSON')
-  .action(withErrorHandling(async (...args: any[]) => {
-    const { setupWhichCommand } = await import('./commands/which.js');
-    await setupWhichCommand(args);
   }));
 
 // === PUBLISHING COMMANDS ===

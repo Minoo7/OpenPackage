@@ -13,10 +13,7 @@ import type { FlowInstallContext, FlowInstallResult } from './types.js';
 import type { Flow, FlowContext, SwitchExpression } from '../../../types/flows.js';
 import { BaseStrategy } from './base-strategy.js';
 import { platformUsesFlows } from '../../platforms.js';
-import { filterSourcesByPlatform } from './helpers/platform-filtering.js';
 import { convertToInstallResult } from './helpers/result-converter.js';
-import { discoverFlowSources } from '../../flows/flow-source-discovery.js';
-import { executeFlowsForSources } from '../../flows/flow-execution-coordinator.js';
 import {
   resolveTargetFromGlob,
 } from '../../flows/flow-execution-coordinator.js';
@@ -27,6 +24,12 @@ import {
   getFirstFromPattern,
 } from '../../flows/flow-source-discovery.js';
 import { resolveSwitchExpression } from '../../flows/switch-resolver.js';
+import {
+  buildImportFlowContext,
+  discoverAndFilterSources,
+  executeImportFlows,
+  type ImportPipelineContext,
+} from '../../flows/import-pipeline.js';
 import {
   buildOwnershipContext,
   resolveConflictsForTargets,
@@ -60,35 +63,35 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
     forceOverwrite: boolean = false
   ): Promise<FlowInstallResult> {
     const { packageName, packageRoot, workspaceRoot, platform, dryRun } = context;
-    
+
     this.logStrategySelection(context);
-    
+
     // Check if platform uses flows
     if (!platformUsesFlows(platform, workspaceRoot)) {
       return this.createEmptyResult();
     }
-    
+
     // Get applicable flows
     const flows = this.getApplicableFlows(platform, workspaceRoot);
     if (flows.length === 0) {
       return this.createEmptyResult();
     }
-    
-    // Build context
-    const flowContext = this.buildFlowContext(context, 'install');
-    
-    // Discover sources
-    const flowSources = await discoverFlowSources(flows, packageRoot, flowContext);
 
-    // Apply resource filtering if specified
-    const resourceFilteredSources = this.applyResourceFiltering(
-      flowSources,
-      context.matchedPattern,
-      packageRoot
+    // Build shared pipeline context (used for both FlowContext and discovery)
+    const pipelineCtx: ImportPipelineContext = {
+      packageName, packageRoot, workspaceRoot, platform,
+      packageVersion: context.packageVersion,
+      priority: context.priority,
+      dryRun: context.dryRun,
+      conversionContext: context.conversionContext,
+      matchedPattern: context.matchedPattern,
+    };
+    const flowContext = buildImportFlowContext(pipelineCtx, 'install');
+
+    // Use shared pipeline stages for discovery + filtering
+    const filteredSources = await discoverAndFilterSources(
+      flows, pipelineCtx, flowContext,
     );
-    
-    // Filter by platform
-    const filteredSources = filterSourcesByPlatform(resourceFilteredSources, platform);
 
     // -----------------------------------------------------------------------
     // File-level conflict resolution (Phase 3)
@@ -152,8 +155,8 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
           allowedRelPaths
         );
 
-        // Execute flows on the pruned source set
-        const executionResult = await executeFlowsForSources(prunedSources, flowContext);
+        // Execute flows on the pruned source set (shared pipeline stage)
+        const executionResult = await executeImportFlows(prunedSources, flowContext);
         const result = convertToInstallResult(executionResult, packageName, platform, dryRun);
 
         // Surface conflict warnings as additional FlowConflictReport entries
@@ -180,7 +183,7 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
     }
 
     // Execute flows (no targets to conflict-check, or conflict resolution errored)
-    const executionResult = await executeFlowsForSources(filteredSources, flowContext);
+    const executionResult = await executeImportFlows(filteredSources, flowContext);
     
     // Convert to result
     const result = convertToInstallResult(executionResult, packageName, platform, dryRun);

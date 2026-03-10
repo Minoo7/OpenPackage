@@ -1,5 +1,8 @@
 import { basename, dirname, extname, join, relative as pathRelative } from 'path';
 
+import yaml from 'js-yaml';
+import { parse as parseJsonc } from 'jsonc-parser';
+
 import type { PackageFile } from '../../types/index.js';
 import { ensureDir, exists, readTextFile, writeTextFile } from '../../utils/fs.js';
 import { UserCancellationError } from '../../utils/errors.js';
@@ -12,6 +15,7 @@ import { resolvePrompt, resolveOutput } from '../ports/resolve.js';
 import { applyMapPipeline, createMapContext, splitMapPipeline } from '../flows/map-pipeline/index.js';
 import { defaultTransformRegistry } from '../flows/flow-transforms.js';
 import { parseMarkdownDocument, serializeMarkdownDocument } from '../flows/markdown.js';
+import { STRUCTURED_FORMAT_EXTENSIONS, MARKDOWN_EXTENSIONS } from '../../constants/index.js';
 
 type ConflictDecision = 'keep-existing' | 'overwrite';
 
@@ -23,7 +27,85 @@ function resolveTargetPath(packageContext: Pick<PackageContext, 'packageRootDir'
   return join(packageContext.packageRootDir, registryPath);
 }
 
-function transformMarkdownWithFlowMap(
+/**
+ * Build a MapContext from a source entry, used for variable resolution in map operations.
+ */
+function buildMapContext(entry: SourceEntry, workspaceRoot: string) {
+  return createMapContext({
+    filename: basename(entry.sourcePath, extname(entry.sourcePath)),
+    dirname: basename(dirname(entry.sourcePath)),
+    path: pathRelative(workspaceRoot, entry.sourcePath).replace(/\\/g, '/'),
+    ext: extname(entry.sourcePath),
+  });
+}
+
+/**
+ * Apply flow.map operations to a parsed data object.
+ * Splits into schema ops and pipe ops to match flow-executor semantics.
+ */
+function applyFlowMap(data: any, entry: SourceEntry, workspaceRoot: string): any {
+  const { schemaOps, pipeOps } = splitMapPipeline(entry.flow!.map!);
+  const mapContext = buildMapContext(entry, workspaceRoot);
+
+  let result = data;
+  if (schemaOps.length > 0) {
+    result = applyMapPipeline(result, schemaOps as any, mapContext, defaultTransformRegistry);
+  }
+  if (pipeOps.length > 0) {
+    result = applyMapPipeline(result, pipeOps as any, mapContext, defaultTransformRegistry);
+  }
+  return result;
+}
+
+/**
+ * Parse a structured file (JSON, JSONC, YAML) from its raw content.
+ * Returns the parsed object, or null if parsing fails.
+ */
+function parseStructuredContent(raw: string, ext: string): any | null {
+  try {
+    switch (ext) {
+      case '.json':
+        return JSON.parse(raw);
+      case '.jsonc':
+        return parseJsonc(raw) ?? null;
+      case '.yaml':
+      case '.yml':
+        return yaml.load(raw) ?? null;
+      default:
+        return null;
+    }
+  } catch (error) {
+    logger.debug('Failed to parse structured file', { ext, error: String(error) });
+    return null;
+  }
+}
+
+/**
+ * Serialize a data object to the target format based on file extension.
+ */
+function serializeStructuredContent(data: any, ext: string): string {
+  switch (ext) {
+    case '.json':
+    case '.jsonc':
+      return JSON.stringify(data, null, 2) + '\n';
+    case '.yaml':
+    case '.yml':
+      return yaml.dump(data, { indent: 2, flowLevel: -1, lineWidth: -1, noRefs: true });
+    default:
+      return JSON.stringify(data, null, 2) + '\n';
+  }
+}
+
+/**
+ * Transform a file's content using the flow.map operations from platforms.jsonc.
+ *
+ * Handles all format types that the flow executor supports:
+ * - Markdown (.md, .mdc): applies map to frontmatter only (body untouched)
+ * - Structured (.json, .jsonc, .yaml, .yml): parses full document, applies map,
+ *   serializes to the target format (derived from registryPath extension)
+ * - Other formats: passed through unchanged
+ */
+function transformFileWithFlowMap(
   raw: string,
   entry: SourceEntry,
   workspaceRoot: string
@@ -33,38 +115,34 @@ function transformMarkdownWithFlowMap(
     return { transformed: false, output: raw };
   }
 
-  // Only transform markdown for now (the reported regression is agent markdown frontmatter)
-  if (!['.md', '.mdc'].includes(extname(entry.sourcePath).toLowerCase())) {
-    return { transformed: false, output: raw };
+  const sourceExt = extname(entry.sourcePath).toLowerCase();
+
+  // Markdown: apply map to frontmatter only
+  if (MARKDOWN_EXTENSIONS.has(sourceExt)) {
+    const parsed = parseMarkdownDocument(raw, { lenient: true });
+    if (!parsed.frontmatter) {
+      return { transformed: false, output: raw };
+    }
+
+    const nextFrontmatter = applyFlowMap(parsed.frontmatter, entry, workspaceRoot);
+    const output = serializeMarkdownDocument({ frontmatter: nextFrontmatter, body: parsed.body });
+    return { transformed: true, output };
   }
 
-  // Parse markdown frontmatter leniently: if frontmatter is invalid, treat as plain markdown
-  const parsed = parseMarkdownDocument(raw, { lenient: true });
-  if (!parsed.frontmatter) {
-    return { transformed: false, output: raw };
+  // Structured formats: apply map to full document, serialize to target format
+  if (STRUCTURED_FORMAT_EXTENSIONS.has(sourceExt)) {
+    const data = parseStructuredContent(raw, sourceExt);
+    if (data == null) {
+      return { transformed: false, output: raw };
+    }
+
+    const transformed = applyFlowMap(data, entry, workspaceRoot);
+    const targetExt = extname(entry.registryPath).toLowerCase();
+    const output = serializeStructuredContent(transformed, targetExt);
+    return { transformed: true, output };
   }
 
-  // Apply flow.map to frontmatter, same as flow executor does for markdown
-  const mapContext = createMapContext({
-    filename: basename(entry.sourcePath, extname(entry.sourcePath)),
-    dirname: basename(dirname(entry.sourcePath)),
-    path: pathRelative(workspaceRoot, entry.sourcePath).replace(/\\/g, '/'),
-    ext: extname(entry.sourcePath),
-  });
-
-  // Split schema vs pipe ops (match flow-executor semantics)
-  const { schemaOps, pipeOps } = splitMapPipeline(flow.map);
-
-  let nextFrontmatter = parsed.frontmatter;
-  if (schemaOps.length > 0) {
-    nextFrontmatter = applyMapPipeline(nextFrontmatter, schemaOps as any, mapContext, defaultTransformRegistry);
-  }
-  if (pipeOps.length > 0) {
-    nextFrontmatter = applyMapPipeline(nextFrontmatter, pipeOps as any, mapContext, defaultTransformRegistry);
-  }
-
-  const output = serializeMarkdownDocument({ frontmatter: nextFrontmatter, body: parsed.body });
-  return { transformed: true, output };
+  return { transformed: false, output: raw };
 }
 
 export interface CopyFilesWithConflictResolutionOptions {
@@ -88,7 +166,7 @@ export async function copyFilesWithConflictResolution(
     const destination = resolveTargetPath(packageContext, entry.registryPath);
 
     const sourceContent = entry.content ?? await readTextFile(entry.sourcePath);
-    const transformed = transformMarkdownWithFlowMap(sourceContent, entry, process.cwd());
+    const transformed = transformFileWithFlowMap(sourceContent, entry, process.cwd());
     const contentToWrite = transformed.output;
     const destExists = await exists(destination);
 

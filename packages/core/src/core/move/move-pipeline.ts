@@ -11,6 +11,7 @@ import { join } from 'path';
 
 import type { CommandResult } from '../../types/index.js';
 import type { ExecutionContext } from '../../types/execution-context.js';
+import type { ResolvedResource } from '../resources/resource-builder.js';
 import { classifyResourceSpec, resolveResourceSpec, type ResolvedTarget } from '../resources/resource-spec.js';
 import { parseResourceQuery } from '../resources/resource-query.js';
 import { addSourceEntriesToPackage } from '../add/add-to-source-pipeline.js';
@@ -243,7 +244,7 @@ async function executeRename(
 
 async function executeRelocate(
   packageSourcePath: string,
-  resource: { resourceName: string; packageName?: string; sourceKeys: Set<string>; [k: string]: any },
+  resource: ResolvedResource,
   resourceName: string,
   newName: string | undefined,
   isRename: boolean,

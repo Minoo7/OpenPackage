@@ -335,7 +335,7 @@ export function mapWorkspaceFileToUniversal(
         if (!toPattern) continue;
 
         const toParts = toPattern.split('/');
-        const subdir = toParts.length > 1 ? toParts[0] : '';
+        const subdir = toParts.length > 1 && !toParts[0].includes('*') ? toParts[0] : '';
 
         // Extract the relative path by mapping from fromPattern to toPattern
         const relPath = mapPathUsingFlowPattern(candidatePath, matchedFromPattern, toPattern);

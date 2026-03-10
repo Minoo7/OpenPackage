@@ -216,6 +216,11 @@
           { "$unset": "mcpServers" }
         ],
         "merge": "deep"
+      },
+      {
+        "from": "**/*",
+        "to": "**/*",
+        "comment": "Pass through any remaining files as-is"
       }
     ],
     "import": [
@@ -301,6 +306,11 @@
           //   { "mcpServers": { "linear": { ... } } }
           { "$rename": { "*": "mcpServers.*" } }
         ]
+      },
+      {
+        "from": "**/*",
+        "to": "**/*",
+        "comment": "Pass through any remaining files as-is"
       }
     ]
   },

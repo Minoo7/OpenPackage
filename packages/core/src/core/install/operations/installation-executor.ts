@@ -15,11 +15,8 @@ import { installOrSyncRootFiles } from './root-files.js';
 import { installPackageByIndexWithFlows as installPackageByIndex, type IndexInstallResult } from '../flow-index-installer.js';
 import type { RelocatedFile } from '../conflicts/file-conflict-resolver.js';
 import type { IndexWriteCollector } from '../wave-resolver/index-write-collector.js';
-import { ensureDir, exists, writeTextFile } from '../../../utils/fs.js';
-import { dirname, join } from 'path';
 import { checkAndHandleAllPackageConflicts } from './conflict-handler.js';
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../../utils/workspace-index-yml.js';
-import { PACKAGE_ROOT_DIRS } from '../../../constants/index.js';
 import type { PromptPort } from '../../ports/prompt.js';
 
 export type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllPackageConflicts>>;
@@ -144,8 +141,8 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
     skipped: new Set<string>()
   };
 
-  /** Per-package root files + root copy paths to augment workspace index */
-  const rootFileAugmentations = new Map<string, { rootFilePaths: string[]; rootCopyPaths: string[] }>();
+  /** Per-package root files to augment workspace index */
+  const rootFileAugmentations = new Map<string, { rootFilePaths: string[] }>();
 
   for (const resolved of packages) {
     try {
@@ -167,26 +164,11 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       installResult.updated.forEach(file => rootFileResults.updated.add(file));
       installResult.skipped.forEach(file => rootFileResults.skipped.add(file));
 
-      // Copy root/** files directly to workspace root (strip prefix)
-      for (const file of categorized.rootCopyFiles) {
-        const targetPath = join(cwd, file.path);
-        const parent = dirname(targetPath);
-        await ensureDir(parent);
-        const existed = await exists(targetPath);
-        await writeTextFile(targetPath, file.content, (file.encoding as BufferEncoding) ?? 'utf8');
-        if (existed) {
-          rootFileResults.updated.add(file.path);
-        } else {
-          rootFileResults.installed.add(file.path);
-        }
-      }
-
-      // Collect root files + root copy for index augmentation
+      // Collect root files for index augmentation
       if (!options.dryRun) {
         const rootFilePaths = [...installResult.created, ...installResult.updated];
-        const rootCopyPaths = categorized.rootCopyFiles.map(f => f.path);
-        if (rootFilePaths.length > 0 || rootCopyPaths.length > 0) {
-          rootFileAugmentations.set(resolved.name, { rootFilePaths, rootCopyPaths });
+        if (rootFilePaths.length > 0) {
+          rootFileAugmentations.set(resolved.name, { rootFilePaths });
         }
       }
     } catch (error) {
@@ -204,15 +186,10 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
   if (!options.dryRun && rootFileAugmentations.size > 0) {
     if (indexWriteCollector) {
       // Defer to collector (parallel install mode)
-      for (const [packageName, { rootFilePaths, rootCopyPaths }] of rootFileAugmentations) {
+      for (const [packageName, { rootFilePaths }] of rootFileAugmentations) {
         const files: Record<string, string[]> = {};
         for (const path of rootFilePaths) {
           files[path] = [path];
-        }
-        const rootPrefix = `${PACKAGE_ROOT_DIRS.ROOT_COPY}/`;
-        for (const path of rootCopyPaths) {
-          const registryKey = `${rootPrefix}${path}`;
-          files[registryKey] = [path];
         }
         indexWriteCollector.recordFileAugmentation({ packageName, files });
       }
@@ -220,7 +197,7 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
       try {
         const wsRecord = await readWorkspaceIndex(cwd);
         wsRecord.index.packages = wsRecord.index.packages ?? {};
-        for (const [packageName, { rootFilePaths, rootCopyPaths }] of rootFileAugmentations) {
+        for (const [packageName, { rootFilePaths }] of rootFileAugmentations) {
           const entry = wsRecord.index.packages[packageName];
           if (!entry) continue;
           const files = { ...(entry.files ?? {}) };
@@ -228,14 +205,6 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
             const existing = files[path] ?? [];
             if (!existing.includes(path)) {
               files[path] = [...existing, path];
-            }
-          }
-          const rootPrefix = `${PACKAGE_ROOT_DIRS.ROOT_COPY}/`;
-          for (const path of rootCopyPaths) {
-            const registryKey = `${rootPrefix}${path}`;
-            const existing = files[registryKey] ?? [];
-            if (!existing.includes(path)) {
-              files[registryKey] = [...existing, path];
             }
           }
           wsRecord.index.packages[packageName] = { ...entry, files };

@@ -1,7 +1,6 @@
 import { relative, basename, dirname } from 'path';
 import { realpathSync } from 'fs';
 
-import { DIR_PATTERNS } from '../../constants/index.js';
 import { isDirectory, isFile, walkFiles } from '../../utils/fs.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import { mapWorkspaceFileToUniversal } from '../platform/platform-mapper.js';
@@ -117,8 +116,7 @@ function deriveSourceEntry(absFilePath: string, cwd: string, inputRoot?: string)
     };
   }
 
-  // 3. All other files: treat as root-level content
-  // Guard: when file is outside workspace, compute path relative to input directory
+  // 3. Guard: when file is outside workspace, compute path relative to input directory
   // to prevent path traversal (e.g., root/../../../.claude/skills/file.md)
   if (normalizedRelPath.startsWith('..')) {
     const base = inputRoot ? realpathSync(inputRoot) : dirname(realFilePath);
@@ -129,10 +127,7 @@ function deriveSourceEntry(absFilePath: string, cwd: string, inputRoot?: string)
     };
   }
 
-  // These are non-platform-specific files stored at package root under root/
-  return {
-    sourcePath: absFilePath,
-    registryPath: `root/${normalizedRelPath}`
-  };
+  // In-workspace files: should always match catch-all import flow
+  return null;
 }
 

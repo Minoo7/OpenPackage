@@ -14,7 +14,7 @@ import { join } from 'path';
 import { removeFileMapping } from '../uninstall/flow-aware-uninstaller.js';
 import { cleanupEmptyParents } from '../../utils/cleanup-empty-parents.js';
 import { buildPreservedDirectoriesSet } from '../platform/directory-preservation.js';
-import { getPlatformRootFileNames, isRootCopyPath } from '../platform/platform-root-files.js';
+import { getPlatformRootFileNames } from '../platform/platform-root-files.js';
 import { isDirKey } from '../../utils/package-index-yml.js';
 import { getTargetPath } from '../../utils/workspace-index-helpers.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
@@ -108,9 +108,6 @@ export async function removeStaleFiles(options: {
   for (const [sourceKey, mappings] of Object.entries(scopedPreviousFiles)) {
     // Skip root file keys (managed by root file system via delimiters)
     if (rootFileNames.has(sourceKey)) continue;
-
-    // Skip root-copy keys (managed by root file phase)
-    if (isRootCopyPath(sourceKey)) continue;
 
     if (isDirKey(sourceKey)) {
       // Directory key: expand to actual files on disk

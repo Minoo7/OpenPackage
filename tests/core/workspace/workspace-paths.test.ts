@@ -14,12 +14,12 @@ assert.equal(isAllowedRegistryPath('skills/code-review/analyze.md'), true, 'skil
 // Root-level files defined in flows should be allowed (e.g., mcp.jsonc in cursor/opencode platforms)
 assert.equal(isAllowedRegistryPath('mcp.jsonc'), true, 'mcp.jsonc should be allowed (defined in cursor/opencode flows)');
 
-// Non-universal paths (not in any flow pattern) are rejected
-assert.equal(isAllowedRegistryPath('docs/getting-started.md'), false, 'docs/* not in flows');
-assert.equal(isAllowedRegistryPath('src/features/foo/bar.md'), false, 'src/* not in flows');
-assert.equal(isAllowedRegistryPath('README.md'), false, 'README.md not in flows (unless explicitly defined)');
-assert.equal(isAllowedRegistryPath('root/tools/helper.sh'), false, 'root/* is copy-to-root (handled separately)');
-assert.equal(isAllowedRegistryPath('random-file.txt'), false, 'random files not in flows');
+// With catch-all flows (**/* and root/**/*), all paths are now allowed through the flow system
+assert.equal(isAllowedRegistryPath('docs/getting-started.md'), true, 'docs/* matched by catch-all **/*');
+assert.equal(isAllowedRegistryPath('src/features/foo/bar.md'), true, 'src/* matched by catch-all **/*');
+assert.equal(isAllowedRegistryPath('README.md'), true, 'README.md matched by catch-all **/*');
+assert.equal(isAllowedRegistryPath('root/tools/helper.sh'), true, 'root/* matched by catch-all root/**/*');
+assert.equal(isAllowedRegistryPath('random-file.txt'), true, 'random files matched by catch-all **/*');
 
 // Root registry files are now allowed in flow-based system (handled via global export flows)
 assert.equal(isAllowedRegistryPath('AGENTS.md'), true, 'AGENTS.md is allowed via global flows');

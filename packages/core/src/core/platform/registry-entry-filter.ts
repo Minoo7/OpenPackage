@@ -1,7 +1,6 @@
 import {
   FILE_PATTERNS
 } from '../../constants/index.js';
-import { isRootCopyPath } from './platform-root-files.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import { 
   matchesUniversalPattern,
@@ -64,9 +63,6 @@ export function isAllowedRegistryPath(registryPath: string, cwd?: string): boole
   
   // Exclude platform-specific YML files
   if (isSkippableRegistryPath(normalized, cwd)) return false;
-
-  // Exclude copy-to-root entries (handled explicitly elsewhere)
-  if (isRootCopyPath(normalized)) return false;
 
   // Flow-based validation: path must match at least one universal pattern
   return matchesUniversalPattern(normalized, cwd);

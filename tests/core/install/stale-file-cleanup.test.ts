@@ -120,7 +120,7 @@ describe('Stale File Cleanup', () => {
     assert.strictEqual(exists, true);
   });
 
-  test('skips root-copy keys (root/ prefix)', async () => {
+  test('cleans up root-prefixed keys like any other key', async () => {
     await fs.writeFile(join(testDir, 'some-root-file.md'), 'content');
 
     const previousFiles: Record<string, (string | WorkspaceIndexFileMapping)[]> = {
@@ -137,11 +137,12 @@ describe('Stale File Cleanup', () => {
       ownershipContext: emptyOwnershipContext(),
     });
 
-    assert.strictEqual(result.deleted.length, 0);
+    // root/ keys are now handled by the flow system, so stale cleanup processes them
+    assert.strictEqual(result.deleted.length, 1);
 
-    // File should still exist since root-copy keys are excluded
+    // File should be removed since the key is no longer in new mapping
     const exists = await fs.access(join(testDir, 'some-root-file.md')).then(() => true, () => false);
-    assert.strictEqual(exists, true);
+    assert.strictEqual(exists, false);
   });
 
   test('handles complex mappings with merge and key tracking', async () => {

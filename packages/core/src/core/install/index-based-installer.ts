@@ -15,7 +15,7 @@ import { logger } from '../../utils/logger.js';
 import {
   FILE_PATTERNS,
 } from '../../constants/index.js';
-import { getPlatformRootFileNames, stripRootCopyPrefix } from '../platform/platform-root-files.js';
+import { getPlatformRootFileNames } from '../platform/platform-root-files.js';
 import type { Platform } from '../platforms.js';
 import { getPlatformsState } from '../platforms.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
@@ -589,14 +589,6 @@ async function augmentIndexMappingWithRootAndCopyToRoot(
 
   for (const file of packageFiles) {
     const normalized = normalizeRegistryPath(file.path);
-
-    const stripped = stripRootCopyPrefix(normalized);
-    if (stripped !== null) {
-      if (await exists(join(cwd, stripped))) {
-        addMappingValue(augmented, normalized, stripped);
-      }
-      continue;
-    }
 
     if (rootFileNames.has(normalized) || isRootRegistryPath(normalized)) {
       explicitRootKeys.add(normalized);

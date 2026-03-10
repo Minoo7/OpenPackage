@@ -369,7 +369,10 @@ function extractPlatformSuffix(absolutePath: string): string | null {
     const def = getPlatformDefinition(platform);
     if (!def.import) continue;
     for (const flow of def.import) {
-      allFromPatterns.push(...extractFromPatternsFromFlow(flow));
+      for (const p of extractFromPatternsFromFlow(flow)) {
+        if (p.startsWith('**')) continue; // Skip catch-all patterns
+        allFromPatterns.push(p);
+      }
     }
   }
   if (allFromPatterns.length === 0) return null;
@@ -493,7 +496,7 @@ function mapUniversalToPlatformWithFlows(
   const flows = definition.export || [];
   
   // Construct the full source path for matching
-  const sourcePath = `${subdir}/${relPath}`;
+  const sourcePath = subdir ? `${subdir}/${relPath}` : relPath;
   
   const candidateFlows = flows.filter((flow: Flow) => {
     // Skip switch expressions
@@ -502,6 +505,10 @@ function mapUniversalToPlatformWithFlows(
     }
     const fromPatternRaw = Array.isArray(flow.from) ? flow.from[0] : flow.from;
     const fromPattern = extractPatternString(fromPatternRaw);
+    if (!subdir) {
+      const firstSegment = fromPattern.split('/')[0];
+      return firstSegment.includes('*');
+    }
     return fromPattern.startsWith(`${subdir}/`);
   });
   if (candidateFlows.length === 0) {

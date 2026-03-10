@@ -1,5 +1,5 @@
 import { dirname, join } from 'path';
-import { FILE_PATTERNS, PACKAGE_ROOT_DIRS } from '../../constants/index.js';
+import { FILE_PATTERNS } from '../../constants/index.js';
 import { exists } from '../../utils/fs.js';
 import { logger } from '../../utils/logger.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
@@ -28,7 +28,7 @@ import {
   isAllowedRegistryPath
 } from '../platform/registry-entry-filter.js';
 import { createWorkspaceHash } from '../../utils/version-generator.js';
-import { getPlatformRootFileNames, stripRootCopyPrefix, isRootCopyPath } from '../platform/platform-root-files.js';
+import { getPlatformRootFileNames } from '../platform/platform-root-files.js';
 
 /**
  * Compute the directory key (registry side) to collapse file mappings under.
@@ -184,7 +184,6 @@ async function buildExactFileMapping(
   // First pass: record platform-specific target files keyed by base universal key
   for (const file of packageFiles) {
     const normalized = normalizeRegistryPath(file.path);
-    if (isRootCopyPath(normalized)) continue;
     if (isRootRegistryPath(normalized) || rootFileNames.has(normalized)) continue;
     if (isSkippableRegistryPath(normalized, cwd)) continue;
     if (!isAllowedRegistryPath(normalized, cwd)) continue;
@@ -215,16 +214,6 @@ async function buildExactFileMapping(
 
     const key = normalized.replace(/\\/g, '/');
     const values = new Set<string>();
-
-    // Copy-to-root: root/** → strip prefix in workspace
-    const stripped = stripRootCopyPrefix(key);
-    if (stripped !== null) {
-      if (await checkExists(stripped)) {
-        values.add(stripped);
-      }
-      addTargets(key, values);
-      continue;
-    }
 
     // Root files: store at workspace root with same name; AGENTS.md may also populate platform root files
     if (rootFileNames.has(key) || isRootRegistryPath(key)) {
@@ -329,7 +318,6 @@ export async function buildMappingAndWriteIndex(
       if (isSkippableRegistryPath(normalized, cwd)) return false;
       if (isAllowedRegistryPath(normalized, cwd)) return true;
       if (isRootRegistryPath(normalized)) return true;
-      if (isRootCopyPath(normalized)) return true;
       return false;
     });
 

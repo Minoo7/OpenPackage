@@ -91,7 +91,7 @@ program
       // All commands section - ultra compact
       output += 'All commands:\n\n';
       output += '    install, uninstall, list,\n';
-      output += '    new, add, remove, sync, set,\n';
+      output += '    new, add, remove, mv, sync, set,\n';
       output += '    publish, unpublish, search, view,\n';
       output += '    login, logout, config\n\n';
       
@@ -128,6 +128,7 @@ program
   .description('Create a new package with minimal manifest (use "opkg set" to configure metadata)')
   .option('--scope <scope>', 'package scope: root, project, or global (default: global)')
   .option('--path <path>', 'custom path for package directory (overrides scope)')
+  .option('--from <source>', 'fork from an existing package (name, gh@owner/repo, or path)')
   .option('-f, --force', 'overwrite existing package without confirmation')
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupNewCommand } = await import('./commands/new.js');
@@ -144,8 +145,6 @@ program
   .option('--copy', 'force copy mode (copy files instead of recording dependency)')
   .option('--platform-specific', 'save platform-specific variants for platform subdir inputs')
   .option('--force', 'overwrite existing files without prompting')
-  .option('--move', 'move resource: add to destination and remove from origin')
-  .option('--as <name>', 'rename the resource at the destination')
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupAddCommand } = await import('./commands/add.js');
     await setupAddCommand(args);
@@ -162,6 +161,21 @@ program
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupRemoveCommand } = await import('./commands/remove.js');
     await setupRemoveCommand(args);
+  }));
+
+program
+  .command('mv')
+  .argument('[resource]', 'resource to rename/move (e.g., skills/foo)')
+  .argument('[new-name]', 'new name for the resource')
+  .description('Rename or relocate a resource')
+  .option('--to <package>', 'destination package')
+  .option('--from <package>', 'source package (for disambiguation)')
+  .option('--force', 'overwrite if target exists')
+  .option('--dry-run', 'preview changes')
+  .option('--json', 'structured output')
+  .action(withErrorHandling(async (...args: any[]) => {
+    const { setupMvCommand } = await import('./commands/mv.js');
+    await setupMvCommand(args);
   }));
 
 program

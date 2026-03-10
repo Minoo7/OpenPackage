@@ -130,9 +130,6 @@ export async function setupAddCommand(args: any[]): Promise<void> {
 
   if (!resource) {
     // Interactive file selector path
-    if (options.move || options.as) {
-      throw new Error('--move and --as require a resource-spec argument (e.g., opkg add agents/foo --to pkg --move).');
-    }
     if (!policy.canPrompt(PromptTier.OptionalMenu)) {
       throw new Error(
         '<resource-spec> argument is required in non-interactive mode.\n' +
@@ -176,12 +173,4 @@ export async function setupAddCommand(args: any[]): Promise<void> {
   const result = await processAddResource(resource, options, cwd, execContext);
   displayResult(result, out, interactive, resource);
 
-  // Display move cleanup summary
-  if (result.kind === 'workspace-resource' && result.moveCleanup) {
-    const { sourceFilesRemoved, workspaceFilesRemoved } = result.moveCleanup;
-    const totalRemoved = sourceFilesRemoved.length + workspaceFilesRemoved.length;
-    if (totalRemoved > 0) {
-      out.info(`Moved: removed ${sourceFilesRemoved.length} source file${sourceFilesRemoved.length === 1 ? '' : 's'} and ${workspaceFilesRemoved.length} workspace file${workspaceFilesRemoved.length === 1 ? '' : 's'} from origin.`);
-    }
-  }
 }

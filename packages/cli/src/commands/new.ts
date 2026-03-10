@@ -10,6 +10,7 @@ import { resolveOutput, resolvePrompt } from '@opkg/core/core/ports/resolve.js';
 interface NewCommandOptions {
   scope?: string;
   path?: string;
+  from?: string;
   force?: boolean;
 }
 
@@ -94,6 +95,21 @@ export async function setupNewCommand(args: any[]): Promise<void> {
 
   // Get the actual package name from the result context
   const actualPackageName = result.context?.name || packageName;
+
+  // Fork from source if --from was specified
+  if (options?.from) {
+    if (!result.context) {
+      throw new Error('Package creation succeeded but no context returned');
+    }
+    const { forkPackageFromSource } = await import('@opkg/core/core/fork-package.js');
+    const forkResult = await forkPackageFromSource({
+      source: options.from,
+      targetDir: result.context.packageRootDir,
+      newPackageName: actualPackageName,
+      cwd,
+    });
+    out.success(`Forked ${forkResult.filesCopied} file${forkResult.filesCopied === 1 ? '' : 's'} from ${forkResult.sourcePackageName}`);
+  }
 
   // Additional success messaging based on scope or custom path
   if (customPath) {

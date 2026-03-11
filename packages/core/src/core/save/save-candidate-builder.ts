@@ -17,7 +17,7 @@
 import { join, relative } from 'path';
 import { exists, getStats, readTextFile, walkFiles } from '../../utils/fs.js';
 import { calculateFileHash } from '../../utils/hash-utils.js';
-import { normalizePathForProcessing } from '../../utils/path-normalization.js';
+import { normalizePathForProcessing, getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { inferPlatformFromWorkspaceFile } from '../platforms.js';
 import { logger } from '../../utils/logger.js';
 import { splitFrontmatter } from '../markdown-frontmatter.js';
@@ -290,8 +290,8 @@ async function buildCandidate(
     
     // Calculate display path (relative to appropriate root)
     const rootPath = source === 'workspace' ? options.workspaceRoot : options.packageRoot;
-    const relPath = absPath.slice(rootPath.length + 1);
-    const displayPath = normalizePathForProcessing(relPath) || registryPath;
+    const relPath = getRelativePathFromBase(absPath, rootPath);
+    const displayPath = relPath || registryPath;
     
     // Infer platform for workspace files
     let platform: string | undefined;
@@ -371,7 +371,7 @@ async function collectFilesUnderDirectory(absDir: string): Promise<string[]> {
   // Walk files recursively
   for await (const absFile of walkFiles(absDir)) {
     // Calculate relative path from directory root
-    const relPath = absFile.slice(absDir.length + 1).replace(/\\/g, '/');
+    const relPath = getRelativePathFromBase(absFile, absDir);
     collected.push(relPath);
   }
   

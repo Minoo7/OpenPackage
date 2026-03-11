@@ -37,7 +37,7 @@ export class WorkspaceSourceLoader implements PackageSourceLoader {
           metadata,
           packageName: source.packageName,
           version,
-          contentRoot: join(source.contentRoot, '/'),
+          contentRoot: source.contentRoot,
           source: 'workspace',
           pluginMetadata: (pkg as any)._format ? {
             isPlugin: true,
@@ -62,7 +62,7 @@ export class WorkspaceSourceLoader implements PackageSourceLoader {
       
       // Resolve package path (relative to targetDir)
       const resolved = resolveDeclaredPath(entry.path, execContext.targetDir);
-      const contentRoot = join(resolved.absolute, '/');
+      const contentRoot = resolved.absolute;
       
       // Load package metadata (handles regular packages and plugins)
       const pkg = await loadPackageFromPath(contentRoot, {

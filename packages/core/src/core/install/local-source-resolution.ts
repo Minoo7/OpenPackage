@@ -121,16 +121,16 @@ export async function resolvePackageContentRoot(args: {
 
   const workspaceSource = await detectWorkspaceMutableSource(cwd, packageName);
   if (workspaceSource) {
-    return path.join(workspaceSource.packageRootDir, path.sep);
+    return workspaceSource.packageRootDir;
   }
 
   const globalMutable = await detectGlobalMutableSource(packageName);
   if (globalMutable) {
-    return path.join(globalMutable.packageRootDir, path.sep);
+    return globalMutable.packageRootDir;
   }
 
   const versionPath = getPackageVersionPath(packageName, version);
-  return path.join(versionPath, path.sep);
+  return versionPath;
 }
 
 export async function maybeWarnHigherRegistryVersion(args: {

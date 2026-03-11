@@ -17,7 +17,7 @@ import { buildPreservedDirectoriesSet } from '../platform/directory-preservation
 import { getPlatformRootFileNames } from '../platform/platform-root-files.js';
 import { isDirKey } from '../../utils/package-index-yml.js';
 import { getTargetPath } from '../../utils/workspace-index-helpers.js';
-import { normalizePathForProcessing } from '../../utils/path-normalization.js';
+import { normalizePathForProcessing, getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { walkFiles } from '../../utils/fs.js';
 import {
   loadOtherPackageIndexes,
@@ -116,9 +116,7 @@ export async function removeStaleFiles(options: {
         const absDir = join(cwd, dirRel);
         try {
           for await (const absFile of walkFiles(absDir)) {
-            const rel = normalizePathForProcessing(
-              absFile.slice(cwd.length + 1)
-            );
+            const rel = getRelativePathFromBase(absFile, cwd);
             // Map each expanded file to the dir-level mapping
             previousTargetMap.set(rel, mapping);
           }
@@ -147,9 +145,7 @@ export async function removeStaleFiles(options: {
         const absDir = join(cwd, dirRel);
         try {
           for await (const absFile of walkFiles(absDir)) {
-            const rel = normalizePathForProcessing(
-              absFile.slice(cwd.length + 1)
-            );
+            const rel = getRelativePathFromBase(absFile, cwd);
             newTargetSet.add(rel);
           }
         } catch {

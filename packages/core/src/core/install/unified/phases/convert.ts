@@ -18,6 +18,7 @@ import type { PackageFile as DetectionPackageFile } from '../../detection-types.
 import { minimatch } from 'minimatch';
 import { getPlatformDefinitions, matchesUniversalPattern } from '../../../platforms.js';
 import { getPatternFromFlow } from '../../schema-registry.js';
+import { getRelativePathFromBase } from '../../../../utils/path-normalization.js';
 import { 
   createTempPackageDirectory, 
   writeTempPackageFiles,
@@ -264,7 +265,7 @@ async function loadPackageFiles(
         
         await walk(fullPath, baseDir, opts);
       } else {
-        const relativePath = fullPath.substring(baseDir.length + 1).replace(/\\/g, '/');
+        const relativePath = getRelativePathFromBase(fullPath, baseDir);
         if (!isRelevantPath(relativePath, opts.targetDir, opts.matchedPattern)) {
           continue;
         }

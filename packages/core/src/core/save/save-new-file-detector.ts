@@ -11,6 +11,7 @@
  */
 
 import { join, dirname } from 'path';
+import { getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { DIR_TO_TYPE } from '../../constants/index.js';
 import { getMarkerFilename } from '../resources/resource-registry.js';
 import { classifySourceKeyBatch } from '../resources/resource-classifier.js';
@@ -140,7 +141,7 @@ export async function detectNewWorkspaceFiles(
       // Derive the workspace-relative target path
       const absWorkspaceRoot = workspaceRoot;
       const target = entry.sourcePath.startsWith(absWorkspaceRoot)
-        ? entry.sourcePath.slice(absWorkspaceRoot.length + 1)
+        ? getRelativePathFromBase(entry.sourcePath, absWorkspaceRoot)
         : entry.sourcePath;
 
       if (!result[entry.registryPath].includes(target)) {

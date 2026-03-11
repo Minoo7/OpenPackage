@@ -155,85 +155,6 @@ describe('Format Detection - Claude Format', () => {
   });
 });
 
-// SKIP: Detection scoring was retuned - claude schema now scores higher than opencode
-// for files with tools-as-object format. These tests need updating to match new scoring.
-describe('Format Detection - OpenCode Format', { skip: 'Detection scoring retuned: claude now scores higher for opencode-style frontmatter' }, () => {
-  test('detects OpenCode format from tools object', () => {
-    const file = loadFixture('opencode-format.md');
-    const format = detectFileFormat(file);
-    
-    assert.equal(format.platform, 'opencode', 'Should detect OpenCode format');
-    assert.ok(format.confidence > 0.7, `Confidence should be high (got ${format.confidence})`);
-    assert.ok(format.matchedFields.includes('tools'), 'Should match tools field');
-  });
-
-  test('detects OpenCode format from temperature', () => {
-    const file = loadFixture('opencode-format.md');
-    const format = detectFileFormat(file);
-    
-    assert.ok(format.matchedFields.includes('temperature'), 'Should match exclusive temperature field');
-  });
-
-  test('detects OpenCode format from maxSteps', () => {
-    const file = loadFixture('opencode-format.md');
-    const format = detectFileFormat(file);
-    
-    assert.ok(format.matchedFields.includes('maxSteps'), 'Should match exclusive maxSteps field');
-  });
-
-  test('detects OpenCode format from disabled field', () => {
-    const file: PackageFile = {
-      path: 'agents/test.md',
-      frontmatter: {
-        description: 'Test agent',
-        disabled: true
-      }
-    };
-    
-    const format = detectFileFormat(file);
-    assert.equal(format.platform, 'opencode', 'disabled should indicate OpenCode format');
-  });
-
-  test('detects OpenCode format from mode field', () => {
-    const file: PackageFile = {
-      path: 'agents/test.md',
-      frontmatter: {
-        description: 'Test agent',
-        mode: 'subagent'
-      }
-    };
-    
-    const format = detectFileFormat(file);
-    assert.equal(format.platform, 'opencode', 'mode should indicate OpenCode format');
-  });
-});
-
-// SKIP: Detection scoring retuned - universal format detection now requires stronger signals
-describe('Format Detection - Universal Format', { skip: 'Detection scoring retuned: universal now requires stronger signals than tools array alone' }, () => {
-  test('detects universal format from tools array', () => {
-    const file = loadFixture('universal-format.md');
-    const format = detectFileFormat(file);
-    
-    assert.equal(format.platform, 'universal', 'Should detect universal format');
-    assert.ok(format.confidence > 0.5, `Confidence should be moderate (got ${format.confidence})`);
-  });
-
-  test('detects universal format from permissions object', () => {
-    const file = loadFixture('universal-format.md');
-    const format = detectFileFormat(file);
-    
-    assert.ok(format.matchedFields.includes('permissions'), 'Should match permissions field');
-  });
-
-  test('defaults to universal for minimal frontmatter', () => {
-    const file = loadFixture('minimal.md');
-    const format = detectFileFormat(file);
-    
-    assert.equal(format.platform, 'universal', 'Should default to universal');
-    assert.ok(format.confidence < 0.5, 'Confidence should be low for minimal match');
-  });
-});
-
 describe('Format Detection - Edge Cases', () => {
   test('returns universal for empty frontmatter', () => {
     const file: PackageFile = {
@@ -376,31 +297,6 @@ describe('Schema Scoring', () => {
     
     assert.equal(validResult.score, 0.5, 'Correct type should score');
     assert.equal(invalidResult.score, 0, 'Wrong type should not score');
-  });
-});
-
-// SKIP: Detection scoring retuned - grouping depends on correct per-file detection
-describe('Batch Operations', { skip: 'Detection scoring retuned: opencode and universal detection changed' }, () => {
-  test('groups files by detected format', () => {
-    const files = [
-      loadFixture('claude-format.md'),
-      loadFixture('opencode-format.md'),
-      loadFixture('universal-format.md')
-    ];
-    
-    const formats = new Map(
-      files.map(f => [f.path, detectFileFormat(f)])
-    );
-    
-    const groups = groupFilesByFormat(formats);
-    
-    assert.ok(groups.has('claude'), 'Should have Claude group');
-    assert.ok(groups.has('opencode'), 'Should have OpenCode group');
-    assert.ok(groups.has('universal'), 'Should have Universal group');
-    
-    assert.equal(groups.get('claude')?.length, 1);
-    assert.equal(groups.get('opencode')?.length, 1);
-    assert.equal(groups.get('universal')?.length, 1);
   });
 });
 

@@ -36,17 +36,4 @@ describe('install --interactive', () => {
       assert.strictEqual(result.all.length, 0);
     });
   });
-
-  describe('validation', () => {
-    it('should reject --interactive with --agents', () => {
-      // This is validated at CLI level in install.ts
-      // The validation ensures mutually exclusive options
-      assert.strictEqual(true, true); // Placeholder
-    });
-
-    it('should reject --interactive with --skills', () => {
-      // This is validated at CLI level in install.ts
-      assert.strictEqual(true, true); // Placeholder
-    });
-  });
 });

@@ -402,5 +402,3 @@ dependencies:
     });
   });
 });
-
-console.log('✓ All git source integration tests passed');

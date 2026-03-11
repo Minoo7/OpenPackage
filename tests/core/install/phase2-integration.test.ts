@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'path';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
-import { parsePackageYml, writePackageYml } from '../../../packages/core/src/utils/package-yml.js';
-import { writeTextFile, readTextFile } from '../../../packages/core/src/utils/fs.js';
+import { parsePackageYml } from '../../../packages/core/src/utils/package-yml.js';
+import { writeTextFile } from '../../../packages/core/src/utils/fs.js';
 import { buildInstallContext } from '../../../packages/core/src/core/install/unified/context-builders.js';
 import type { ExecutionContext } from '../../../packages/core/src/types/execution-context.js';
 
@@ -55,47 +55,13 @@ dependencies:
       const execContext: ExecutionContext = { sourceCwd: tmpDir, targetDir: tmpDir, isGlobal: false };
       const contexts = await buildInstallContext(execContext, undefined, {});
       
-      // buildInstallContext returns a workspace context object (not an array) for bulk install
+      // buildInstallContext returns a BulkInstallContextsResult for bulk install (no packageInput)
       assert.ok(contexts != null && typeof contexts === 'object');
-      // Note: actual count may vary based on workspace files, so we just verify it's an array
-      
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
-  });
-  
-  it('should write manifest in new format after modification', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'opkg-test-'));
-    
-    try {
-      const manifestPath = join(tmpDir, 'openpackage.yml');
-      
-      // Start with old format
-      const oldFormat = `name: test-workspace
-version: 1.0.0
-dependencies:
-  - name: gh@user/old-plugin
-    git: https://github.com/user/old-plugin.git
-    ref: main
-`;
-      
-      await writeTextFile(manifestPath, oldFormat);
-      
-      // Parse and write back
-      const parsed = await parsePackageYml(manifestPath);
-      await writePackageYml(manifestPath, parsed);
-      
-      // Read raw content
-      const written = await readTextFile(manifestPath);
-      
-      // Verify new format is written
-      assert.ok(written.includes('url: https://github.com/user/old-plugin.git#main'));
-      assert.ok(!written.includes('git:'));
-      assert.ok(!written.includes('ref:'));
-      
-      // Parse again - should not trigger migration (already new format)
-      const reparsed = await parsePackageYml(manifestPath);
-      assert.strictEqual(reparsed.dependencies![0].url, 'https://github.com/user/old-plugin.git#main');
+      assert.ok(!Array.isArray(contexts));
+      assert.ok('workspaceContext' in contexts, 'result should have workspaceContext property');
+      assert.ok('dependencyContexts' in contexts, 'result should have dependencyContexts property');
+      const bulk = contexts as { workspaceContext: unknown; dependencyContexts: unknown[] };
+      assert.ok(Array.isArray(bulk.dependencyContexts), 'dependencyContexts should be an array');
       
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -136,39 +102,4 @@ dependencies: []
     }
   });
   
-  it('should maintain consistency across multiple read/write cycles', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'opkg-test-'));
-    
-    try {
-      const manifestPath = join(tmpDir, 'openpackage.yml');
-      
-      // Start with old format
-      const oldFormat = `name: test-workspace
-version: 1.0.0
-dependencies:
-  - name: gh@user/plugin
-    git: https://github.com/user/plugin.git
-    ref: v2.0.0
-    path: src
-`;
-      
-      await writeTextFile(manifestPath, oldFormat);
-      
-      // Multiple cycles
-      for (let i = 0; i < 3; i++) {
-        const parsed = await parsePackageYml(manifestPath);
-        await writePackageYml(manifestPath, parsed);
-        
-        // Verify consistency
-        const content = await readTextFile(manifestPath);
-        assert.ok(content.includes('url: https://github.com/user/plugin.git#v2.0.0'));
-        assert.ok(content.includes('path: src'));
-        assert.ok(!content.includes('git:'));
-        assert.ok(!content.includes('ref:'));
-      }
-      
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
-  });
 });

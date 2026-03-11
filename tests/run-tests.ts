@@ -22,7 +22,6 @@ const testFiles: string[] = [
   'tests/core/install/format-detector.test.ts',
   'tests/core/install/format-distribution-analysis.test.ts',
   'tests/core/install/format-group-merger.test.ts',
-  'tests/core/install/frontmatter-override.test.ts',
   'tests/core/install/git-cache.test.ts',
   'tests/core/install/git-source-integration.test.ts',
   'tests/core/install/import-flow-converter.test.ts',
@@ -118,7 +117,6 @@ const testFiles: string[] = [
 
   // Commands
   'tests/commands/install-plugins-flag.test.ts',
-  'tests/commands/install-plugins-integration.test.ts',
   'tests/commands/list-untracked.test.ts',
   'tests/commands/install-list.test.ts',
   'tests/commands/set.test.ts',

@@ -10,8 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  convertFormatGroup,
-  applyImportFlows
+  convertFormatGroup
 } from '../../../packages/core/src/core/install/import-flow-converter.js';
 import {
   mergeFormatGroups,

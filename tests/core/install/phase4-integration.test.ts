@@ -318,33 +318,3 @@ type: agent
     });
   });
 });
-
-describe('Phase 4: Context Integration', () => {
-  it('should properly type InstallationContext extensions', () => {
-    // Type check only - ensures new fields are properly typed
-    const context = {
-      formatDetection: undefined,
-      wasPreConverted: undefined,
-      conversionErrors: undefined
-    };
-    
-    assert.ok(context.formatDetection === undefined);
-    assert.ok(context.wasPreConverted === undefined);
-    assert.ok(context.conversionErrors === undefined);
-  });
-
-  it('should properly type LoadedPackage extensions', () => {
-    // Type check only - ensures new fields are properly typed
-    const loaded = {
-      formatDetection: undefined,
-      preConverted: undefined,
-      conversionContext: undefined
-    };
-    
-    assert.ok(loaded.formatDetection === undefined);
-    assert.ok(loaded.preConverted === undefined);
-    assert.ok(loaded.conversionContext === undefined);
-  });
-});
-
-console.log('✓ All Phase 4 integration tests passed');

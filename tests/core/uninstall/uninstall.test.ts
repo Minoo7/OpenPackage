@@ -1,3 +1,4 @@
+import { describe, test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
@@ -61,9 +62,18 @@ async function cleanup(paths: string[]) {
   await Promise.all(paths.map(p => fs.rm(p, { recursive: true, force: true })));
 }
 
-{
-  const { cwd, home } = await setupWorkspace();
-  try {
+describe('uninstall command', () => {
+  const tempDirs: string[] = [];
+
+  afterEach(async () => {
+    await cleanup(tempDirs);
+    tempDirs.length = 0;
+  });
+
+  test('removes platform files, root files, and index entries', async () => {
+    const { cwd, home } = await setupWorkspace();
+    tempDirs.push(cwd, home);
+
     const res = runCli(['uninstall', 'my-pkg'], cwd, { HOME: home });
     assert.equal(res.code, 0, `uninstall should succeed: ${res.stderr}`);
 
@@ -84,19 +94,13 @@ async function cleanup(paths: string[]) {
 
     const manifestContent = await fs.readFile(path.join(cwd, '.openpackage', 'openpackage.yml'), 'utf8');
     assert.ok(!manifestContent.includes('my-pkg'), 'workspace manifest should remove dependency entry');
+  });
 
-    console.log('uninstall tests passed');
-  } finally {
-    await cleanup([cwd, home]);
-  }
-}
+  test('workspace package appears in resource builder and dry-run succeeds', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'opkg-uninstall-list-home-'));
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'opkg-uninstall-list-ws-'));
+    tempDirs.push(workspace, home);
 
-// Test: workspace package appears in uninstall list (its installed resources can be uninstalled)
-{
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'opkg-uninstall-list-home-'));
-  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'opkg-uninstall-list-ws-'));
-
-  try {
     const openpkgDir = path.join(workspace, '.openpackage');
     const pkgDir = path.join(openpkgDir, 'packages', 'my-pkg');
     await fs.mkdir(pkgDir, { recursive: true });
@@ -140,10 +144,5 @@ async function cleanup(paths: string[]) {
     // Direct uninstall of my-pkg still works
     const res = runCli(['uninstall', 'my-pkg', '--dry-run'], workspace, { HOME: home });
     assert.equal(res.code, 0, `uninstall should succeed: ${res.stderr}`);
-
-    console.log('uninstall list workspace package test passed');
-  } finally {
-    await cleanup([workspace, home]);
-  }
-}
-
+  });
+});

@@ -222,44 +222,12 @@ mcp:
 
     assert.strictEqual(result.updated, true);
 
-    const updatedContent = await fs.readFile(absPath, 'utf-8');
-    assert.ok(updatedContent.includes('server2'));
-    assert.ok(!updatedContent.includes('server1'));
-  });
-});
-
-describe('Workspace Index Integration', () => {
-  test('example workspace index with key tracking', () => {
-    // This demonstrates the expected structure
-    const workspaceIndex = {
-      packages: {
-        'my-mcp-package': {
-          path: '~/.openpackage/packages/my-mcp-package/1.0.0/',
-          version: '1.0.0',
-          files: {
-            'mcp.jsonc': [
-              {
-                target: '.opencode/opencode.json',
-                merge: 'deep',
-                keys: ['mcp.server1', 'mcp.server2']
-              }
-            ],
-            'rules/typescript.md': [
-              '.opencode/rules/typescript.md'
-            ]
-          }
-        }
+    const yaml = await import('js-yaml');
+    const updatedContent = yaml.load(await fs.readFile(absPath, 'utf-8')) as Record<string, unknown>;
+    assert.deepStrictEqual(updatedContent, {
+      mcp: {
+        server2: { url: 'http://localhost:4000' }
       }
-    };
-
-    // Verify structure
-    const pkg = workspaceIndex.packages['my-mcp-package'];
-    assert.strictEqual(pkg.files['mcp.jsonc'].length, 1);
-
-    const mcpMapping = pkg.files['mcp.jsonc'][0];
-    if (typeof mcpMapping !== 'string') {
-      assert.deepStrictEqual(mcpMapping.keys, ['mcp.server1', 'mcp.server2']);
-      assert.strictEqual(mcpMapping.merge, 'deep');
-    }
+    });
   });
 });

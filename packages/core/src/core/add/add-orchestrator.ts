@@ -6,15 +6,21 @@
  * and returns typed results. No terminal-UI dependencies.
  */
 
-import { join, resolve } from 'path';
+import { basename, join, resolve } from 'path';
+
+import fg from 'fast-glob';
+import { isJunk } from 'junk';
 
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { CommandResult } from '../../types/index.js';
+import type { ResourceTypeId, ResourceTypeDef } from '../../types/resources.js';
 import { classifyAddInput, type AddInputClassification, type AddClassifyOptions } from './add-input-classifier.js';
 import { runAddDependencyFlow, type AddDependencyResult, type AddDependencyOptions } from './add-dependency-flow.js';
 import { runAddToSourcePipeline, runAddToSourcePipelineBatch, addSourceEntriesToPackage, type AddToSourceResult, type AddToSourceOptions } from './add-to-source-pipeline.js';
 import { classifyResourceSpec, resolveResourceSpec } from '../resources/resource-spec.js';
 import { mapWorkspaceFileToUniversal } from '../platform/platform-mapper.js';
+import { getResourceTypeDef } from '../resources/resource-registry.js';
+import { getDetectedPlatforms, getPlatformDefinition, deriveRootDirFromFlows } from '../platforms.js';
 import { exists } from '../../utils/fs.js';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +38,52 @@ export interface ProcessAddResourceOptions {
   to?: string;
   platformSpecific?: boolean;
   force?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Filesystem discovery
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan all platform directories for files belonging to a specific resource.
+ * Returns absolute paths found on disk — no index/install-state needed.
+ */
+async function discoverResourceFiles(
+  typeDef: ResourceTypeDef,
+  resourceName: string,
+  targetDir: string,
+): Promise<string[]> {
+  const platforms = await getDetectedPlatforms(targetDir);
+  const seen = new Set<string>();
+  const results: string[] = [];
+  const escaped = fg.escapePath(resourceName);
+
+  for (const platform of platforms) {
+    try {
+      const def = getPlatformDefinition(platform, targetDir);
+      const rootDir = deriveRootDirFromFlows(def);
+      const cwd = join(targetDir, rootDir, typeDef.dirName!);
+
+      // Marker-based (e.g. skills/) → grab everything inside the directory
+      // File-based (e.g. rules/) → also grab single-file matches like name.*
+      const patterns = [`${escaped}/**/*`];
+      if (!typeDef.marker) {
+        patterns.push(`${escaped}.*`);
+      }
+
+      const matches = await fg(patterns, { cwd, absolute: true, dot: false });
+      for (const abs of matches) {
+        if (isJunk(basename(abs))) continue;
+        if (seen.has(abs)) continue;
+        seen.add(abs);
+        results.push(abs);
+      }
+    } catch {
+      // Platform directory may not exist — expected, skip.
+    }
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,38 +134,46 @@ export async function processAddResource(
       throw new Error(`No resource found for "${resourceSpec}".`);
     }
 
-    const { candidate, packageSourcePath, targetDir } = resolved[0];
+    const { candidate, targetDir } = resolved[0];
     const resource = candidate.resource!;
 
-    // Build source entries directly from the resource's sourceKeys.
-    // We read from the installed package source directory (not the workspace
-    // deployment path) to preserve the correct package-relative registryPaths.
-    let entries: Array<{ sourcePath: string; registryPath: string; content?: string }> = [];
+    // Discover files from the filesystem — no install-state needed.
+    // For types with a dirName (skills, rules, agents, etc.) we scan platform
+    // directories directly. For dirName:null types (mcp, plugin, other) we
+    // fall back to the index's targetFiles with an exists() check.
+    const resourceType = resource.resourceType as ResourceTypeId;
+    const typeDef = getResourceTypeDef(resourceType);
+    let discoveredFiles: string[];
 
-    if (packageSourcePath && resource.sourceKeys.size > 0) {
-      // Tracked resource with a package source — read from source directory
-      for (const sourceKey of resource.sourceKeys) {
-        const absSource = join(packageSourcePath, sourceKey);
-        if (await exists(absSource)) {
-          entries.push({ sourcePath: absSource, registryPath: sourceKey });
-        }
-      }
+    if (typeDef.dirName) {
+      discoveredFiles = await discoverResourceFiles(
+        typeDef,
+        resource.resourceName,
+        targetDir,
+      );
     } else {
-      // Untracked resource (or tracked without source) — fall back to deployed target files.
-      // Use the platform mapper to convert workspace paths back to universal registry paths.
-      const seenRegistryPaths = new Set<string>();
-
-      for (const targetFile of resource.targetFiles) {
-        const absSource = join(targetDir, targetFile);
-        const mapping = mapWorkspaceFileToUniversal(absSource, targetDir);
-        if (!mapping) continue;
-        const registryPath = [mapping.subdir, mapping.relPath].filter(Boolean).join('/');
-        if (seenRegistryPaths.has(registryPath)) continue;
-        seenRegistryPaths.add(registryPath);
-        if (await exists(absSource)) {
-          entries.push({ sourcePath: absSource, registryPath });
-        }
+      discoveredFiles = [];
+      for (const tf of resource.targetFiles) {
+        const abs = join(targetDir, tf);
+        if (await exists(abs)) discoveredFiles.push(abs);
       }
+    }
+
+    const entries: Array<{ sourcePath: string; registryPath: string; content?: string }> = [];
+    const seenRegistryPaths = new Set<string>();
+
+    for (const absSource of discoveredFiles) {
+      let mapping;
+      try {
+        mapping = mapWorkspaceFileToUniversal(absSource, targetDir);
+      } catch {
+        continue;
+      }
+      if (!mapping) continue;
+      const registryPath = [mapping.subdir, mapping.relPath].filter(Boolean).join('/');
+      if (seenRegistryPaths.has(registryPath)) continue;
+      seenRegistryPaths.add(registryPath);
+      entries.push({ sourcePath: absSource, registryPath });
     }
 
     if (entries.length === 0) {

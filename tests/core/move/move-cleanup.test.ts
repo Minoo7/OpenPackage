@@ -29,7 +29,7 @@ function makeExecContext(targetDir: string): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-describe('move-pipeline: performMoveCleanup', () => {
+describe('move-cleanup: performMoveCleanup', () => {
   describe('tracked resource cleanup (source-only)', () => {
     it('removes source files from origin package without touching workspace', async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opkg-move-cleanup-'));
@@ -60,7 +60,8 @@ describe('move-pipeline: performMoveCleanup', () => {
 
         // Source file should be removed
         assert.ok(!fs.existsSync(path.join(pkgSourceDir, 'agents', 'my-agent.md')));
-        assert.ok(result.sourceFilesRemoved.length > 0);
+        assert.equal(result.sourceFilesRemoved.length, 1);
+        assert.equal(result.sourceFilesRemoved[0], 'agents/my-agent.md');
 
         // Workspace file should NOT be removed (deferred to sync)
         assert.ok(fs.existsSync(workspaceFile), 'workspace file should remain intact');
@@ -96,29 +97,12 @@ describe('move-pipeline: performMoveCleanup', () => {
 
         // Workspace file should be removed (untracked path)
         assert.ok(!fs.existsSync(path.join(tmp, '.claude', 'skills', 'my-skill', 'SKILL.md')));
-        assert.ok(result.workspaceFilesRemoved.length > 0);
+        assert.equal(result.workspaceFilesRemoved.length, 1);
+        assert.equal(result.workspaceFilesRemoved[0], '.claude/skills/my-skill/SKILL.md');
         assert.equal(result.sourceFilesRemoved.length, 0);
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
-  });
-});
-
-describe('move-pipeline: MoveResult type shape', () => {
-  it('adopt is a valid action value in MoveResult', () => {
-    // Type-level check: MoveResult accepts 'adopt' action.
-    // The actual pipeline is tested via manual integration tests since
-    // it depends on the full resource resolution stack.
-    const result: import('../../../packages/core/src/core/move/move-pipeline.js').MoveResult = {
-      action: 'adopt',
-      sourcePath: '/tmp/test',
-      resourceName: 'test-resource',
-      destPackage: 'my-pkg',
-      movedFiles: 2,
-      dryRun: false,
-    };
-    assert.equal(result.action, 'adopt');
-    assert.equal(result.sourcePackage, undefined);
   });
 });

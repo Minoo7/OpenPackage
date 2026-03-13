@@ -23,6 +23,7 @@ import { resolvePackageContentRoot } from './local-source-resolution.js';
 import { logger } from '../../utils/logger.js';
 import { formatPathForYaml } from '../../utils/path-resolution.js';
 import { sortMapping } from '../../utils/package-index-yml.js';
+import { deduplicateTargets } from '../../utils/workspace-index-helpers.js';
 import {
   readWorkspaceIndex,
   writeWorkspaceIndex,
@@ -284,30 +285,9 @@ export async function installPackageByIndexWithFlows(
       for (const [source, targets] of Object.entries(result.fileMapping ?? {})) {
         const normalizedSource = await normalizeSourceKey(source);
         
-        if (!fileMapping[normalizedSource]) {
-          fileMapping[normalizedSource] = [];
-        }
-        
-        // Note: mergeWorkspaceFileMappings expects nested objects, so we wrap in object
-        const tempTarget = { [normalizedSource]: fileMapping[normalizedSource] };
-        const tempSource = { [normalizedSource]: targets };
-        
-        // Merge while deduping by target path; prefer complex mapping over string
-        const byTarget = new Map<string, string | WorkspaceIndexFileMapping>();
-        for (const m of fileMapping[normalizedSource]) {
-          const targetPath = typeof m === 'string' ? m : m.target;
-          byTarget.set(targetPath, m);
-        }
-        for (const m of targets) {
-          const targetPath = typeof m === 'string' ? m : m.target;
-          const prior = byTarget.get(targetPath);
-          if (!prior) {
-            byTarget.set(targetPath, m);
-          } else if (typeof prior === 'string' && typeof m !== 'string') {
-            byTarget.set(targetPath, m);
-          }
-        }
-        fileMapping[normalizedSource] = Array.from(byTarget.values());
+        fileMapping[normalizedSource] = deduplicateTargets(
+          fileMapping[normalizedSource] ?? [], targets
+        );
       }
 
       // Aggregate statistics

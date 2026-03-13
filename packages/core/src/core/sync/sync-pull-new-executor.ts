@@ -12,6 +12,7 @@ import type { NewSourceFileEntry } from './sync-source-scanner.js';
 import type { ExecutionResult } from '../flows/flow-execution-coordinator.js';
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../utils/workspace-index-yml.js';
 import { initPullPipelineContext, runPipelineForAllPlatforms } from './sync-pull-pipeline-runner.js';
+import { deduplicateTargets } from '../../utils/workspace-index-helpers.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -131,7 +132,7 @@ async function updateIndexWithNewFiles(
         if (!pkg.files[sourceKey]) {
           pkg.files[sourceKey] = mappings;
         } else {
-          pkg.files[sourceKey].push(...mappings);
+          pkg.files[sourceKey] = deduplicateTargets(pkg.files[sourceKey], mappings);
         }
         addedCount++;
       }

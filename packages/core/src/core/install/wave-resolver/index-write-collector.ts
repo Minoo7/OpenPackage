@@ -15,7 +15,7 @@ import type { WorkspaceIndexFileMapping, WorkspaceIndexPackage } from '../../../
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../../utils/workspace-index-yml.js';
 import { sortMapping } from '../../../utils/package-index-yml.js';
 import { formatPathForYaml } from '../../../utils/path-resolution.js';
-import { getTargetPath } from '../../../utils/workspace-index-helpers.js';
+import { getTargetPath, deduplicateTargets } from '../../../utils/workspace-index-helpers.js';
 import { normalizePathForProcessing } from '../../../utils/path-normalization.js';
 import { logger } from '../../../utils/logger.js';
 import type { IndexSourceType } from '../../../constants/index.js';
@@ -212,19 +212,7 @@ function applyMutation(
       if (!existing) break;
       const files = { ...(existing.files ?? {}) };
       for (const [key, values] of Object.entries(mutation.files)) {
-        const current = files[key] ?? [];
-        // Deduplicate by target path
-        const byTarget = new Map<string, string | WorkspaceIndexFileMapping>();
-        for (const m of current) {
-          byTarget.set(getTargetPath(m), m);
-        }
-        for (const m of values) {
-          const tp = getTargetPath(m);
-          if (!byTarget.has(tp)) {
-            byTarget.set(tp, m);
-          }
-        }
-        files[key] = Array.from(byTarget.values());
+        files[key] = deduplicateTargets(files[key] ?? [], values);
       }
       existing.files = files;
       break;

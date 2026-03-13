@@ -36,6 +36,27 @@ export function isMergedMapping(
 }
 
 /**
+ * Deduplicate target mappings by target path, preferring object mappings over plain strings.
+ */
+export function deduplicateTargets(
+  existing: (string | WorkspaceIndexFileMapping)[],
+  incoming: (string | WorkspaceIndexFileMapping)[]
+): (string | WorkspaceIndexFileMapping)[] {
+  const byTarget = new Map<string, string | WorkspaceIndexFileMapping>();
+  for (const m of existing) {
+    byTarget.set(getTargetPath(m), m);
+  }
+  for (const m of incoming) {
+    const tp = getTargetPath(m);
+    const prior = byTarget.get(tp);
+    if (!prior || (typeof prior === 'string' && typeof m !== 'string')) {
+      byTarget.set(tp, m);
+    }
+  }
+  return Array.from(byTarget.values());
+}
+
+/**
  * Extract all target paths from file mappings
  */
 export function extractAllTargetPaths(

@@ -21,6 +21,7 @@ import { logger } from '../../utils/logger.js';
 import { stripPlatformSuffixFromFilename } from './platform-suffix-handler.js';
 import { resolveSwitchExpression, isSwitchExpression } from './switch-resolver.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
+import { deduplicateTargets } from '../../utils/workspace-index-helpers.js';
 
 /**
  * Execution result with enhanced metadata
@@ -423,10 +424,9 @@ export function aggregateExecutionResults(results: ExecutionResult[]): Execution
     
     // Merge file mappings
     for (const [source, targets] of Object.entries(result.fileMapping)) {
-      if (!aggregated.fileMapping[source]) {
-        aggregated.fileMapping[source] = [];
-      }
-      aggregated.fileMapping[source].push(...targets);
+      aggregated.fileMapping[source] = deduplicateTargets(
+        aggregated.fileMapping[source] ?? [], targets
+      );
     }
     
     if (!result.success) {

@@ -36,6 +36,18 @@ describe('resolveVersionMismatchInteractively', () => {
     assert.deepStrictEqual(result, { action: 'update', newRange: '~2.0.0' });
   });
 
+  it('falls back to caret range from sourceVersion when suggestedRange is undefined', async () => {
+    const checkNoSuggestion: VersionCheckResult = {
+      status: 'mismatch',
+      sourceVersion: '3.1.0',
+      manifestRange: '^2.0.0',
+      suggestedRange: undefined,
+    };
+    const prompt = createMockPrompt('update');
+    const result = await resolveVersionMismatchInteractively('my-pkg', checkNoSuggestion, prompt);
+    assert.deepStrictEqual(result, { action: 'update', newRange: '^3.1.0' });
+  });
+
   it('returns skip when user selects skip', async () => {
     const prompt = createMockPrompt('skip');
     const result = await resolveVersionMismatchInteractively('my-pkg', mismatchCheck, prompt);

@@ -106,7 +106,9 @@ export async function executeFlowsForSources(
           if (!result.fileMapping[key]) {
             result.fileMapping[key] = [];
           }
-          result.fileMapping[key].push(...sourceResult.fileMapping);
+          result.fileMapping[key] = deduplicateTargets(
+            result.fileMapping[key], sourceResult.fileMapping
+          );
         }
         
         if (sourceResult.conflicts) {

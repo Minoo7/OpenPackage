@@ -16,6 +16,7 @@ import type {
   SyncPackageResult,
   SyncAllResult,
   SyncAllJsonOutput,
+  WorkspaceDeletedEntry,
 } from './sync-types.js';
 import { readWorkspaceIndex, getWorkspaceIndexPath } from '../../utils/workspace-index-yml.js';
 import { healAndPersistIndex } from '../../utils/workspace-index-healer.js';
@@ -38,6 +39,8 @@ import {
   updateIndexVersion,
 } from './sync-version-checker.js';
 import type { VersionUpdateInfo } from './sync-version-checker.js';
+import { detectWorkspaceDeletedEntries } from './sync-workspace-deleted-detector.js';
+import { executePushDeleteActions } from './sync-push-delete-executor.js';
 import { discoverSyncablePackages } from './sync-discovery.js';
 import { aggregateSyncFileResults, buildSyncAllResult, formatSyncMessage } from './sync-result-reporter.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
@@ -80,9 +83,15 @@ export async function runSyncPipeline(
     return aggregateSyncFileResults(resolvedName, []);
   }
 
+  // Capture workspace-deleted entries before healer removes them
+  const workspaceDeleted: WorkspaceDeletedEntry[] = (options.direction !== 'pull')
+    ? await detectWorkspaceDeletedEntries(cwd, pkgIndex.files)
+    : [];
+
   // Self-heal stale index entries (files deleted from disk)
   const healResult = await healAndPersistIndex(cwd, index, getWorkspaceIndexPath(cwd), resolvedName);
-  if (healResult.healed && (!pkgIndex.files || Object.keys(pkgIndex.files).length === 0)) {
+  if (healResult.healed && (!pkgIndex.files || Object.keys(pkgIndex.files).length === 0)
+    && workspaceDeleted.length === 0) {
     return aggregateSyncFileResults(resolvedName, []);
   }
 
@@ -130,7 +139,7 @@ export async function runSyncPipeline(
   const shouldDetectNewFiles = options.direction !== 'push'
     && isFullInstallScope(pkgIndex.installScope);
 
-  if (actions.length === 0 && !shouldDetectNewFiles) {
+  if (actions.length === 0 && !shouldDetectNewFiles && workspaceDeleted.length === 0) {
     return aggregateSyncFileResults(resolvedName, []);
   }
 
@@ -218,6 +227,19 @@ export async function runSyncPipeline(
       );
       allResults.push(...newResults);
     }
+  }
+
+  // Execute push-delete for workspace-deleted files (workspace → source deletion)
+  if (workspaceDeleted.length > 0) {
+    const pushDeleteResults = await executePushDeleteActions(
+      workspaceDeleted,
+      resolvedName,
+      packageRoot,
+      cwd,
+      options,
+      ctx,
+    );
+    allResults.push(...pushDeleteResults);
   }
 
   const result = aggregateSyncFileResults(resolvedName, allResults);

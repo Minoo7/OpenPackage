@@ -85,3 +85,9 @@ export interface SyncablePackageInfo {
 
 /** Map of sourceKey::targetPath → ContentStatus, reused from content-status-checker */
 export type StatusMap = Map<string, ContentStatus>;
+
+/** A source key whose ALL workspace targets have been deleted */
+export interface WorkspaceDeletedEntry {
+  sourceKey: string;
+  allTargets: string[];
+}

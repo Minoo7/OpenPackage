@@ -24,11 +24,15 @@ import { isProjectScopedPath } from '../scope-resolution.js';
 import { addSourceEntriesToPackage } from '../add/add-to-source-pipeline.js';
 import { performMoveCleanup } from '../add/move-cleanup.js';
 import { renameEntries } from '../add/entry-renamer.js';
-import { readTextFile } from '../../utils/fs.js';
+import { walkFiles } from '../../utils/fs.js';
+import { getRelativePathFromBase } from '../../utils/path-normalization.js';
 import { resolveOutput, resolvePrompt } from '../ports/resolve.js';
 import { validateMoveArgs, validateNotNoop } from './move-validator.js';
 import { executeInPlaceRename } from './move-rename-executor.js';
 import { disambiguatePlatform, groupFilesByPlatform } from '../platform/platform-disambiguation.js';
+import { discoverResources } from '../install/resource-discoverer.js';
+import type { ResourceType } from '../install/resource-types.js';
+import { buildEntriesFromWorkspaceResource } from '../resources/workspace-resource-discovery.js';
 import type { SourceEntry } from '../add/source-collector.js';
 
 // ---------------------------------------------------------------------------
@@ -203,7 +207,7 @@ export async function runMovePipeline(
 
     try {
       return await executeAdopt(
-        effectiveResource, resourceName, newName, typeDir, options, execContext,
+        effectiveResource, resourceName, newName, options, execContext,
       );
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -317,7 +321,7 @@ async function executeRelocate(
   options: MoveOptions,
   execContext: ExecutionContext,
 ): Promise<CommandResult<MoveResult>> {
-  let entries = await buildEntriesFromSourceKeys(packageSourcePath, resource.sourceKeys);
+  let entries = await buildEntriesFromPackageSource(packageSourcePath, resource);
 
   if (isRename && newName) {
     entries = await renameEntries(entries, resourceName, newName);
@@ -353,14 +357,14 @@ async function executeAdopt(
   resource: ResolvedResource,
   resourceName: string,
   newName: string | undefined,
-  typeDir: string | undefined,
   options: MoveOptions,
   execContext: ExecutionContext,
 ): Promise<CommandResult<MoveResult>> {
-  const effectiveTypeDir = typeDir ?? resource.resourceType + 's';
-
-  let entries = await buildEntriesFromTargetFiles(
-    resource.targetFiles, execContext.targetDir, effectiveTypeDir,
+  let entries = await buildEntriesFromWorkspaceResource(
+    resource.resourceType,
+    resourceName,
+    resource.targetFiles,
+    execContext.targetDir,
   );
 
   const isRename = !!newName && newName !== resourceName;
@@ -397,43 +401,51 @@ async function executeAdopt(
 // ---------------------------------------------------------------------------
 
 /**
- * Build SourceEntry[] from workspace target files for untracked resources.
+ * Build SourceEntry[] from a package source directory using disk-based discovery.
  *
- * Derives registry paths by extracting from the typeDir segment onward,
- * deduplicates by registry path (multiple platforms may produce the same one),
- * and reads content from the first workspace file per registry path.
+ * When the resource already carries `sourcePath` and `installKind` (e.g. from the
+ * --from resolution path which already ran discoverResources), those are used
+ * directly to avoid a redundant full-package discovery. Otherwise falls back to
+ * discoverResources() for the workspace-index resolution path.
  */
-async function buildEntriesFromTargetFiles(
-  targetFiles: string[],
-  targetDir: string,
-  typeDir: string,
+async function buildEntriesFromPackageSource(
+  packageSourcePath: string,
+  resource: ResolvedResource,
 ): Promise<SourceEntry[]> {
-  const seen = new Map<string, SourceEntry>();
-  const typeDirPrefix = typeDir + '/';
+  let filePath = resource.sourcePath;
+  let installKind = resource.installKind;
 
-  for (const targetFile of targetFiles) {
-    const idx = targetFile.indexOf(typeDirPrefix);
-    if (idx < 0) continue;
+  if (!filePath || !installKind) {
+    // Workspace-index resolution path: sourcePath/installKind not populated.
+    // Discover from disk to avoid trusting stale sourceKeys.
+    const discovery = await discoverResources(packageSourcePath, packageSourcePath);
+    const matched = (discovery.byType.get(resource.resourceType as ResourceType) ?? []).find(
+      r => r.displayName === resource.resourceName,
+    );
 
-    const registryPath = targetFile.slice(idx);
-    if (seen.has(registryPath)) continue;
-
-    const absPath = join(targetDir, targetFile);
-    let content: string | undefined;
-    try {
-      content = await readTextFile(absPath);
-    } catch {
-      // skip unreadable
+    if (!matched) {
+      throw new Error(
+        `Resource "${resource.resourceType}/${resource.resourceName}" not found on disk in package at ${packageSourcePath}. ` +
+        'The workspace index may be stale — try running `opkg sync` first.',
+      );
     }
 
-    seen.set(registryPath, {
-      sourcePath: absPath,
-      registryPath,
-      ...(content !== undefined ? { content } : {}),
-    });
+    filePath = matched.filePath;
+    installKind = matched.installKind;
   }
 
-  return [...seen.values()];
+  if (installKind === 'directory') {
+    const entries: SourceEntry[] = [];
+    for await (const file of walkFiles(filePath)) {
+      const registryPath = getRelativePathFromBase(file, packageSourcePath);
+      entries.push({ sourcePath: file, registryPath });
+    }
+    return entries;
+  }
+
+  // file-based resource
+  const registryPath = getRelativePathFromBase(filePath, packageSourcePath);
+  return [{ sourcePath: filePath, registryPath }];
 }
 
 /**
@@ -501,25 +513,3 @@ async function resolveFromPackageSource(
   }));
 }
 
-/**
- * Build SourceEntry[] from a set of source keys in a package.
- */
-async function buildEntriesFromSourceKeys(
-  packageRoot: string,
-  sourceKeys: Set<string>,
-): Promise<SourceEntry[]> {
-  return Promise.all([...sourceKeys].map(async (key) => {
-    const absPath = join(packageRoot, key);
-    let content: string | undefined;
-    try {
-      content = await readTextFile(absPath);
-    } catch {
-      // If read fails, skip content — copyFilesWithConflictResolution handles it
-    }
-    return {
-      sourcePath: absPath,
-      registryPath: key,
-      ...(content !== undefined ? { content } : {}),
-    };
-  }));
-}

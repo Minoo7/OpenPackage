@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { matchCandidates } from '../../../packages/core/src/core/resources/resource-resolver.js';
 import type { WorkspaceResources, ResolvedResource, ResolvedPackage } from '../../../packages/core/src/core/resources/resource-builder.js';
 
-function makeResource(overrides: Partial<ResolvedResource> & { resourceName: string; resourceType: string }): ResolvedResource {
+function makeResource(overrides: Partial<ResolvedResource> & Pick<ResolvedResource, 'resourceName' | 'resourceType'>): ResolvedResource {
   return {
     kind: 'tracked',
     sourceKeys: new Set(),

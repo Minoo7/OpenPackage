@@ -15,7 +15,7 @@ import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
 import { resolveDeclaredPath } from '../../utils/path-resolution.js';
 import { exists } from '../../utils/fs.js';
 import { checkContentStatus, type ContentStatus } from '../list/content-status-checker.js';
-import { getMarkerFilename, toPluralKey, type ResourceTypeId } from './resource-registry.js';
+import { getMarkerFilename, toPluralKey } from './resource-registry.js';
 import type { ResolvedResource } from './resource-builder.js';
 import { parseResourceQuery } from './resource-query.js';
 import { getTargetPath } from '../../utils/workspace-index-helpers.js';
@@ -221,7 +221,7 @@ function deriveAggregateResourceStatus(files: EnhancedFileMapping[]): string | u
  * - MCP: first sourceKey (e.g. "mcp.json")
  */
 function computeResourceRelativePath(resource: ResolvedResource): string | undefined {
-  const resourceType = resource.resourceType as ResourceTypeId;
+  const resourceType = resource.resourceType;
 
   // Marker-based types → directory path (e.g. "skills/skill-dev")
   if (getMarkerFilename(resourceType)) {

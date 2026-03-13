@@ -83,6 +83,7 @@ const testFiles: string[] = [
   'tests/core/resources/resource-classifier.test.ts',
   'tests/core/resources/resource-resolver.test.ts',
   'tests/core/resources/resource-spec.test.ts',
+  'tests/core/resources/workspace-resource-discovery.test.ts',
 
   // Core - Sync
   'tests/core/sync/name-version-parser.test.ts',
@@ -97,6 +98,7 @@ const testFiles: string[] = [
   'tests/core/move/move-validator.test.ts',
   'tests/core/move/move-rename-executor.test.ts',
   'tests/core/move/move-cleanup.test.ts',
+  'tests/core/move/move-entry-builders.test.ts',
 
   // Core - Add
   'tests/core/add/add-dependency-flow.test.ts',

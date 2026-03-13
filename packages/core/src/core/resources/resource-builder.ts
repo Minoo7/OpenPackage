@@ -14,12 +14,13 @@ import { scanUntrackedFiles } from '../list/untracked-files-scanner.js';
 import { RESOURCE_TYPE_ORDER } from './resource-registry.js';
 import { classifySourceKeyBatch, classifyAndGroupUntrackedFiles } from './resource-classifier.js';
 import type { ResourceScope } from './scope-traversal.js';
+import type { ResourceTypeId } from '../../types/resources.js';
 import { logger } from '../../utils/logger.js';
 
 export interface ResolvedResource {
   kind: 'tracked' | 'untracked';
   resourceName: string;
-  resourceType: string;
+  resourceType: ResourceTypeId;
   /** Package name (only for tracked resources) */
   packageName?: string;
   /** Source keys in workspace index that belong to this resource (only for tracked) */
@@ -92,7 +93,7 @@ export async function buildWorkspaceResources(
 
     // Create ResolvedResource entries for this package
     for (const [key, entry] of resourceMap) {
-      const [resourceType, resourceName] = key.split('::');
+      const [resourceType, resourceName] = key.split('::') as [ResourceTypeId, string];
       resources.push({
         kind: 'tracked',
         resourceName,

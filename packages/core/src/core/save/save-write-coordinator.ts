@@ -147,7 +147,7 @@ async function writeUniversal(
   const writeResult = await safeWrite(targetPath, preparedContent.content);
 
   if (writeResult.success) {
-    const action = operation.operation === 'create' ? 'Created' : 'Updated';
+    const action = operation.operation[0].toUpperCase() + operation.operation.slice(1);
     logger.debug(`${action} ${registryPath}${preparedContent.wasExtracted ? ' (extracted package contribution)' : ''}`);
   }
 
@@ -187,7 +187,7 @@ async function writePlatformSpecific(
         registryPath,
         targetPath: '',
         content: '',
-        operation: 'skip',
+        operation: 'skipped',
         isPlatformSpecific: true
       },
       success: false,
@@ -203,7 +203,7 @@ async function writePlatformSpecific(
         registryPath,
         targetPath: '',
         content: '',
-        operation: 'skip',
+        operation: 'skipped',
         isPlatformSpecific: true,
         platform
       },
@@ -219,7 +219,7 @@ async function writePlatformSpecific(
   
   // Determine operation type
   const fileExists = await exists(targetPath);
-  const operationType: 'create' | 'update' = fileExists ? 'update' : 'create';
+  const operationType: 'created' | 'updated' = fileExists ? 'updated' : 'created';
   
   const operation: WriteOperation = {
     registryPath: platformRegistryPath,
@@ -236,7 +236,7 @@ async function writePlatformSpecific(
       const existingContent = await readTextFile(targetPath);
       if (existingContent === preparedContent.content) {
         logger.debug(`Skipping write for ${platformRegistryPath}: content identical`);
-        operation.operation = 'skip';
+        operation.operation = 'skipped';
         return {
           operation,
           success: true
@@ -260,7 +260,7 @@ async function writePlatformSpecific(
   const writeResult = await safeWrite(targetPath, preparedContent.content);
   
   if (writeResult.success) {
-    const action = operationType === 'create' ? 'Created' : 'Updated';
+    const action = operationType[0].toUpperCase() + operationType.slice(1);
     logger.debug(
       `${action} platform-specific file: ${platformRegistryPath}${preparedContent.wasExtracted ? ' (extracted package contribution)' : ''}`
     );
@@ -664,30 +664,30 @@ function shouldWrite(
   candidate: SaveCandidate,
   localCandidate?: SaveCandidate,
   preparedContent?: string
-): { needed: boolean; operation: 'create' | 'update' | 'skip' } {
+): { needed: boolean; operation: 'created' | 'updated' | 'skipped' } {
   // No local candidate means file doesn't exist - create
   if (!localCandidate) {
-    return { needed: true, operation: 'create' };
+    return { needed: true, operation: 'created' };
   }
-  
+
   // If we have prepared content that differs from original, we need to compare
   // the prepared content with local content directly
   if (preparedContent && preparedContent !== candidate.content) {
     // Content was transformed (extracted) - compare directly
     if (preparedContent === localCandidate.content) {
-      return { needed: false, operation: 'skip' };
+      return { needed: false, operation: 'skipped' };
     }
-    return { needed: true, operation: 'update' };
+    return { needed: true, operation: 'updated' };
   }
-  
+
   // Compare content hashes (original comparison logic)
   if (candidate.contentHash === localCandidate.contentHash) {
     // Content identical - skip write
-    return { needed: false, operation: 'skip' };
+    return { needed: false, operation: 'skipped' };
   }
-  
+
   // Content differs - update
-  return { needed: true, operation: 'update' };
+  return { needed: true, operation: 'updated' };
 }
 
 /**

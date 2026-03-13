@@ -247,13 +247,6 @@ export interface UninstallOptions {
   global?: boolean;
 }
 
-export interface SaveOptions {
-  force?: boolean;
-  rename?: string;
-  platformSpecific?: boolean;
-  apply?: boolean;
-}
-
 // Registry types
 export interface RegistryEntry {
   name: string;

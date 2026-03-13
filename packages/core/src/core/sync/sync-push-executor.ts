@@ -132,9 +132,9 @@ function convertSaveResult(
   }
 
   // Build a lookup of successfully written registry paths
-  const writtenPaths = new Map<string, { operation: string }>();
+  const writtenPaths = new Map<string, { operation: 'created' | 'updated' }>();
   for (const wr of report.writeResults ?? []) {
-    if (wr.success && wr.operation.operation !== 'skip') {
+    if (wr.success && wr.operation.operation !== 'skipped') {
       writtenPaths.set(wr.operation.registryPath, {
         operation: wr.operation.operation,
       });
@@ -149,7 +149,7 @@ function convertSaveResult(
         sourceKey: action.sourceKey,
         targetPath: action.targetPath,
         action: 'pushed',
-        operation: written.operation as 'created' | 'updated',
+        operation: written.operation,
       });
     } else {
       // Source key wasn't in write results — may have been skipped by pipeline

@@ -87,7 +87,7 @@ describe('save-write-merged-extraction', () => {
     // Verify write succeeded
     assert.strictEqual(results.length, 1);
     assert.strictEqual(results[0].success, true);
-    assert.strictEqual(results[0].operation.operation, 'create');
+    assert.strictEqual(results[0].operation.operation, 'created');
     
     // Read written file
     const writtenContent = await readTextFile(join(packageRoot, 'mcp.json'));
@@ -290,7 +290,7 @@ describe('save-write-merged-extraction', () => {
     
     // Should skip write since extracted content matches source
     assert.strictEqual(results[0].success, true);
-    assert.strictEqual(results[0].operation.operation, 'skip');
+    assert.strictEqual(results[0].operation.operation, 'skipped');
   });
   
   it('should handle composite merge strategy gracefully', async () => {

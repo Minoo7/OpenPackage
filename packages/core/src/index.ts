@@ -89,11 +89,9 @@ export {
 } from './core/unpublish/interactive-unpublish-flow.js';
 
 // ============================================================================
-// Save / Set Pipelines
+// Set Pipeline
 // ============================================================================
 
-export type { SaveToSourceOptions } from './core/save/save-to-source-pipeline.js';
-export type { SaveConflictStrategy } from './core/save/save-types.js';
 export { runSetPipeline } from './core/set/set-pipeline.js';
 
 // ============================================================================
@@ -184,7 +182,6 @@ export type {
   PackageFile,
   InstallOptions,
   UninstallOptions,
-  SaveOptions,
   OpenPackageConfig,
   ProfileConfig,
   Profile,

@@ -7,7 +7,6 @@
  * 
  * Key responsibilities:
  * - Build SaveReport from pipeline results
- * - Format user-friendly messages
  * - Create CommandResult objects
  * - Provide helpers for success/error cases
  * 
@@ -107,16 +106,16 @@ export function buildSaveReport(
   // Flatten write results
   const flatResults = allWriteResults.flat();
 
-  // Count successful writes (exclude 'skip' — source already had correct content)
-  const successfulWrites = flatResults.filter(r => r.success && r.operation.operation !== 'skip');
+  // Count successful writes (exclude 'skipped' — source already had correct content)
+  const successfulWrites = flatResults.filter(r => r.success && r.operation.operation !== 'skipped');
   const filesSaved = successfulWrites.length;
 
   // Count created vs updated
   const filesCreated = successfulWrites.filter(
-    r => r.operation.operation === 'create'
+    r => r.operation.operation === 'created'
   ).length;
   const filesUpdated = successfulWrites.filter(
-    r => r.operation.operation === 'update'
+    r => r.operation.operation === 'updated'
   ).length;
 
   // Count platform-specific files
@@ -187,7 +186,6 @@ export function createCommandResult(report: SaveReport): CommandResult {
   return {
     success: true,
     data: {
-      message: formatSaveMessage(report),
       report: report
     }
   };
@@ -215,179 +213,3 @@ export function createSuccessResult(
   };
 }
 
-/**
- * Create error result
- * 
- * Helper for error cases throughout the pipeline.
- * 
- * @param error - Error message
- * @returns CommandResult with failure status
- */
-export function createErrorResult(error: string): CommandResult {
-  return {
-    success: false,
-    error: error
-  };
-}
-
-/**
- * Format human-readable save message
- * 
- * Generates a user-friendly message summarizing the save operation.
- * Includes conditional sections based on what occurred.
- * 
- * Template:
- * ```
- * ✓ Saved {packageName}
- *   {filesCreated} file(s) created
- *   {filesUpdated} file(s) updated
- *   {platformSpecificFiles} platform-specific file(s)
- *   {interactiveResolutions} interactive resolution(s)
- * ```
- * 
- * @param report - Save report to format
- * @returns Formatted message string
- */
-export function formatSaveMessage(report: SaveReport): string {
-  const lines: string[] = [];
-  const prefix = report.dryRun ? '(dry-run) Would save' : 'Saved';
-
-  if (report.filesSaved === 0 && report.errors.length === 0) {
-    const noChangeParts = [`${prefix} ${report.packageName}\n  No changes detected`];
-    if (report.filesClean > 0) {
-      noChangeParts.push(`  ${report.filesClean} file(s) already clean`);
-    }
-    if (report.filesOutdated > 0) {
-      noChangeParts.push(`  ${report.filesOutdated} file(s) outdated (source updated since install)`);
-      noChangeParts.push(`  Run 'opkg install ${report.packageName}' to sync latest source changes`);
-    }
-    return noChangeParts.join('\n');
-  }
-
-  lines.push(`${prefix} ${report.packageName}`);
-
-  if (report.filesCreated > 0) {
-    const verb = report.dryRun ? 'would be created' : 'created';
-    lines.push(`  ${report.filesCreated} file(s) ${verb}`);
-  }
-
-  if (report.filesUpdated > 0) {
-    const verb = report.dryRun ? 'would be updated' : 'updated';
-    lines.push(`  ${report.filesUpdated} file(s) ${verb}`);
-  }
-
-  if (report.filesClean > 0) {
-    lines.push(`  ${report.filesClean} file(s) already clean`);
-  }
-
-  if (report.filesOutdated > 0) {
-    lines.push(`  ${report.filesOutdated} file(s) outdated (source updated since install)`);
-  }
-
-  if (report.platformSpecificFiles > 0) {
-    lines.push(`  ${report.platformSpecificFiles} platform-specific file(s)`);
-  }
-
-  if (report.interactiveResolutions > 0) {
-    lines.push(`  ${report.interactiveResolutions} interactive resolution(s)`);
-  }
-
-  if (report.conflictsSkipped > 0) {
-    lines.push(`  ${report.conflictsSkipped} conflict(s) skipped`);
-  }
-
-  if (report.errors.length > 0) {
-    lines.push('');
-    lines.push(`⚠️  ${report.errors.length} error(s) occurred:`);
-    report.errors.forEach(err => {
-      lines.push(`  • ${err.path}: ${err.error.message}`);
-    });
-  }
-
-  const successfulWrites = report.writeResults.filter(r => r.success);
-  if (successfulWrites.length > 0) {
-    lines.push('');
-    const filesLabel = report.dryRun ? 'Files that would be saved:' : 'Files saved:';
-    lines.push(`  ${filesLabel}`);
-
-    const sorted = [...successfulWrites].sort((a, b) =>
-      a.operation.registryPath.localeCompare(b.operation.registryPath)
-    );
-
-    for (const result of sorted) {
-      const { registryPath, isPlatformSpecific, platform } = result.operation;
-      const label = isPlatformSpecific && platform
-        ? `${registryPath} (${platform})`
-        : `${registryPath} (universal)`;
-      lines.push(`   ├── ${label}`);
-    }
-  }
-
-  if (report.skippedConflicts.length > 0) {
-    lines.push('');
-    lines.push('  Skipped conflicts:');
-    for (const conflict of report.skippedConflicts) {
-      lines.push(`   ├── ${conflict.registryPath} (${conflict.candidateCount} candidates, ${conflict.reason})`);
-    }
-  }
-
-  if (report.outdatedFilePaths.length > 0) {
-    lines.push('');
-    lines.push('  Outdated files (source updated since install):');
-    for (const filePath of report.outdatedFilePaths) {
-      lines.push(`   ├── ${filePath}`);
-    }
-    lines.push(`  Run 'opkg install ${report.packageName}' to sync latest source changes`);
-  }
-
-  if (report.filesSaved > 0 && !report.dryRun) {
-    lines.push('');
-    lines.push('💡 Changes saved to package source.');
-    lines.push('   To sync changes to workspace, run:');
-    lines.push(`     opkg install ${report.packageName}`);
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Convert SaveReport to a JSON-serializable output object.
- * Used by `opkg save --json`.
- */
-export function toSaveJsonOutput(report: SaveReport): Record<string, unknown> {
-  return {
-    success: true,
-    packageName: report.packageName,
-    dryRun: report.dryRun ?? false,
-    summary: {
-      totalGroups: report.totalGroups,
-      groupsWithAction: report.groupsWithAction,
-      filesSaved: report.filesSaved,
-      filesCreated: report.filesCreated,
-      filesUpdated: report.filesUpdated,
-      platformSpecificFiles: report.platformSpecificFiles,
-      conflictsSkipped: report.conflictsSkipped,
-      filesClean: report.filesClean,
-      filesOutdated: report.filesOutdated,
-      filesDiverged: report.filesDiverged,
-    },
-    status: {
-      outdatedFiles: report.outdatedFilePaths,
-      divergedFiles: report.divergedFilePaths,
-    },
-    files: report.writeResults
-      .filter(r => r.success)
-      .map(r => ({
-        registryPath: r.operation.registryPath,
-        operation: r.operation.operation,
-        success: r.success,
-        platform: r.operation.platform ?? null,
-        isPlatformSpecific: r.operation.isPlatformSpecific,
-      })),
-    skippedConflicts: report.skippedConflicts,
-    errors: report.errors.map(e => ({
-      path: e.path,
-      message: e.error.message,
-    })),
-  };
-}

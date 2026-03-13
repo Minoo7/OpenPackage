@@ -41,6 +41,7 @@ import { removeStaleFiles } from './stale-file-cleanup.js';
 import { normalizePathForProcessing } from '../../utils/path-normalization.js';
 import type { IndexWriteCollector } from './wave-resolver/index-write-collector.js';
 import type { IndexSourceType } from '../../constants/index.js';
+import type { InstallScope } from '../../types/workspace-index.js';
 import { createContextFromFormat } from '../conversion-context/creation.js';
 import { detectFormatWithContextFromDirectory } from './helpers/format-detection.js';
 import {
@@ -115,7 +116,8 @@ export async function installPackageByIndexWithFlows(
   prompt?: import('../ports/prompt.js').PromptPort,
   indexWriteCollector?: IndexWriteCollector,
   sharedOwnershipContext?: import('./conflicts/file-conflict-resolver.js').OwnershipContext,
-  sourceType?: IndexSourceType
+  sourceType?: IndexSourceType,
+  installScope?: InstallScope
 ): Promise<IndexInstallResult> {
   logger.debug(`Installing ${packageName}@${version} with flows for platforms: ${platforms.join(', ')}`);
 
@@ -408,7 +410,8 @@ export async function installPackageByIndexWithFlows(
       indexWriteCollector,
       platforms,
       resolvedNamespaceSlug,
-      sourceType
+      sourceType,
+      installScope
     );
   }
 
@@ -449,7 +452,8 @@ async function updateWorkspaceIndexForFlows(
   indexWriteCollector?: IndexWriteCollector,
   platforms?: Platform[],
   namespaceSlug?: string,
-  sourceType?: IndexSourceType
+  sourceType?: IndexSourceType,
+  installScope?: InstallScope
 ): Promise<void> {
   const effectiveVersion = resourceVersion ?? version;
 
@@ -464,6 +468,7 @@ async function updateWorkspaceIndexForFlows(
       platforms,
       namespace: namespaceSlug,
       sourceType,
+      installScope,
     });
     return;
   }
@@ -513,6 +518,11 @@ async function updateWorkspaceIndexForFlows(
     // Add source type if present
     if (sourceType) {
       packageEntry.sourceType = sourceType;
+    }
+
+    // Add install scope if present
+    if (installScope) {
+      packageEntry.installScope = installScope;
     }
 
     wsRecord.index.packages[packageName] = packageEntry;

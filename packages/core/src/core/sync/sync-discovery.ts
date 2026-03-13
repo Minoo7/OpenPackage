@@ -8,6 +8,7 @@
 
 import type { SyncDirection, SyncablePackageInfo } from './sync-types.js';
 import { readWorkspaceIndex } from '../../utils/workspace-index-yml.js';
+import { isFullInstallScope } from '../../types/workspace-index.js';
 import { resolvePackageSource } from '../source-resolution/resolve-package-source.js';
 import { checkContentStatus } from '../list/content-status-checker.js';
 import { detectAllNewWorkspaceFiles } from '../save/save-new-file-detector.js';
@@ -87,7 +88,7 @@ export async function discoverSyncablePackages(
       }
 
       // Also detect new source files not in the index (pull candidates)
-      if (direction !== 'push') {
+      if (direction !== 'push' && isFullInstallScope(pkgEntry.installScope)) {
         const existingKeys = new Set(Object.keys(pkgEntry.files));
         const newFiles = await detectNewSourceFiles(source.absolutePath, targetDir, existingKeys);
         if (newFiles.length > 0) {

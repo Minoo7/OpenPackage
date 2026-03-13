@@ -18,6 +18,7 @@ import type { IndexWriteCollector } from '../wave-resolver/index-write-collector
 import { checkAndHandleAllPackageConflicts } from './conflict-handler.js';
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../../utils/workspace-index-yml.js';
 import type { PromptPort } from '../../ports/prompt.js';
+import type { InstallScope } from '../../../types/workspace-index.js';
 
 export type ConflictSummary = Awaited<ReturnType<typeof checkAndHandleAllPackageConflicts>>;
 
@@ -32,6 +33,7 @@ export interface InstallationPhasesParams {
   prompt?: PromptPort;
   indexWriteCollector?: IndexWriteCollector;
   sharedOwnershipContext?: import('../conflicts/file-conflict-resolver.js').OwnershipContext;
+  installScope?: InstallScope;
 }
 
 export interface InstallationPhasesResult {
@@ -97,7 +99,9 @@ export async function performIndexBasedInstallationPhases(params: InstallationPh
         forceOverwrite,        // Phase 5: propagate package-level overwrite decision
         prompt,
         indexWriteCollector,
-        sharedOwnershipContext
+        sharedOwnershipContext,
+        undefined,  // sourceType
+        params.installScope
       );
 
       totalInstalled += installResult.installed;

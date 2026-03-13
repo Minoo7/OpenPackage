@@ -19,6 +19,7 @@ import { getTargetPath } from '../../../utils/workspace-index-helpers.js';
 import { normalizePathForProcessing } from '../../../utils/path-normalization.js';
 import { logger } from '../../../utils/logger.js';
 import type { IndexSourceType } from '../../../constants/index.js';
+import type { InstallScope } from '../../../types/workspace-index.js';
 
 // ============================================================================
 // Types
@@ -39,6 +40,7 @@ export interface PackageEntryUpdate {
   namespace?: string;
   sourceType?: IndexSourceType;
   parent?: string;
+  installScope?: InstallScope;
 }
 
 /**
@@ -200,6 +202,7 @@ function applyMutation(
       if (mutation.platforms && mutation.platforms.length > 0) entry.platforms = mutation.platforms;
       if (mutation.sourceType) entry.sourceType = mutation.sourceType;
       if (mutation.parent) entry.parent = mutation.parent;
+      if (mutation.installScope) entry.installScope = mutation.installScope;
       index.packages[mutation.packageName] = entry;
       break;
     }

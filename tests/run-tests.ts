@@ -87,6 +87,7 @@ const testFiles: string[] = [
 
   // Core - Sync
   'tests/core/sync/name-version-parser.test.ts',
+  'tests/core/sync/sync-new-source-detection.test.ts',
   'tests/core/sync/sync-version-checker.test.ts',
   'tests/core/sync/sync-version-resolver.test.ts',
 

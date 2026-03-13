@@ -1,19 +1,12 @@
 import type { Platform } from '../../platforms.js';
 import type { InstallOptions, ExecutionContext } from '../../../types/index.js';
 import type { ResolvedPackage } from '../../dependency-resolver/types.js';
-import type { WorkspaceIndex } from '../../../types/workspace-index.js';
+import type { WorkspaceIndex, InstallScope } from '../../../types/workspace-index.js';
 import type { ConflictSummary } from '../operations/installation-executor.js';
 import type { MutableSourceKind } from '../local-source-resolution.js';
 
-/**
- * Describes the scope of files this install context covers.
- * - 'full': All files in the package/plugin base directory are being installed.
- * - 'subset': A filtered set of files (specific resources, e.g., --agents code-reviewer).
- * 
- * This is a first-class concept used by the conversion cache to isolate cache directories
- * per scope, preventing contamination between full and subset installs.
- */
-export type InstallScope = 'full' | 'subset';
+// Re-export so existing consumers of InstallScope from this module keep working.
+export type { InstallScope };
 
 /**
  * Source information for package installation

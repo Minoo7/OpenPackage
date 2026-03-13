@@ -8,6 +8,7 @@
 
 import type { ExecutionContext } from '../../types/execution-context.js';
 import type { WorkspaceIndexFileMapping } from '../../types/workspace-index.js';
+import { isFullInstallScope } from '../../types/workspace-index.js';
 import type {
   SyncOptions,
   SyncFileAction,
@@ -126,7 +127,10 @@ export async function runSyncPipeline(
   // Classify into actions
   let actions = classifyFileActions(statusMap, options.direction, options.conflicts);
 
-  if (actions.length === 0) {
+  const shouldDetectNewFiles = options.direction !== 'push'
+    && isFullInstallScope(pkgIndex.installScope);
+
+  if (actions.length === 0 && !shouldDetectNewFiles) {
     return aggregateSyncFileResults(resolvedName, []);
   }
 
@@ -200,8 +204,8 @@ export async function runSyncPipeline(
     allResults.push(...removeResults);
   }
 
-  // Detect and pull new source files (only in pull/bidirectional mode)
-  if (options.direction !== 'push') {
+  // Detect and pull new source files (only in pull/bidirectional mode for full-scope packages)
+  if (shouldDetectNewFiles) {
     const existingKeys = new Set(Object.keys(filesMapping));
     const newFiles = await detectNewSourceFiles(packageRoot, cwd, existingKeys);
     if (newFiles.length > 0) {

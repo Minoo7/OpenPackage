@@ -158,6 +158,11 @@ function sanitizeWorkspaceIndexPackage(entry: any): WorkspaceIndexPackage | null
     pkg.parent = rawParent.trim();
   }
 
+  const rawInstallScope = (entry as { installScope?: unknown }).installScope;
+  if (rawInstallScope === 'full' || rawInstallScope === 'subset') {
+    pkg.installScope = rawInstallScope;
+  }
+
   return pkg;
 }
 
@@ -359,6 +364,9 @@ export async function writeWorkspaceIndex(record: WorkspaceIndexRecord): Promise
     }
     if (pkg.parent) {
       sortedPkg.parent = pkg.parent;
+    }
+    if (pkg.installScope) {
+      sortedPkg.installScope = pkg.installScope;
     }
     sortedPackages[pkgName] = sortedPkg;
   }

@@ -37,6 +37,9 @@ export interface WorkspaceIndexFileMapping {
   sourceHash?: string;
 }
 
+/** Scope of the original installation: 'full' (all resources) or 'subset' (specific resources). */
+export type InstallScope = 'full' | 'subset';
+
 export interface WorkspaceIndexPackage {
   /**
    * Declared path (tilde/relative preserved) or absolute path if inferred.
@@ -77,8 +80,15 @@ export interface WorkspaceIndexPackage {
   sourceType?: 'project' | 'global' | 'registry' | 'git';
   /** Back-pointer to parent package name (for embedded packages) */
   parent?: string;
+  /** Install scope: 'full' installs all resources, 'subset' only installs specific resources */
+  installScope?: InstallScope;
 }
 
 export interface WorkspaceIndex {
   packages: Record<string, WorkspaceIndexPackage>;
+}
+
+/** Returns true when the package was installed with full scope (or has no scope, i.e. legacy). */
+export function isFullInstallScope(scope: InstallScope | undefined): boolean {
+  return (scope ?? 'full') === 'full';
 }

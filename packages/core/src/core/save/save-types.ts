@@ -169,7 +169,7 @@ export interface WriteOperation {
   content: string;
   
   /** Operation type */
-  operation: 'create' | 'update' | 'skip';
+  operation: 'created' | 'updated' | 'skipped';
   
   /** Whether this is a platform-specific file */
   isPlatformSpecific: boolean;

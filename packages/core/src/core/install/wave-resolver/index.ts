@@ -25,3 +25,5 @@ export type {
   PackageFetcher,
   FetcherOptions
 } from './types.js';
+export { getNodePackageName } from './types.js';
+export { computeEffectivePlatforms, computePlatformSkips, type PlatformSkipInfo } from './platform-filter.js';

@@ -10,6 +10,7 @@ import type { ExecutionContext, InstallOptions } from '../../../types/index.js';
 import type { ResolvedPackage } from '../../dependency-resolver/types.js';
 import type { Platform } from '../../platforms.js';
 import type { WaveGraph, WaveNode } from './types.js';
+import { getNodePackageName } from './types.js';
 import { getInstalledPackageVersion } from '../../openpackage.js';
 import { resolveResourceScoping } from '../preprocessing/base-resolver.js';
 import { logger } from '../../../utils/logger.js';
@@ -127,7 +128,7 @@ export async function buildInstallContexts(
     }
 
     // Determine package name for installed-check
-    const packageName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+    const packageName = getNodePackageName(node);
 
     // Check already-installed
     if (!force) {

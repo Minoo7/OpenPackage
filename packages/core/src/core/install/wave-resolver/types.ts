@@ -95,6 +95,14 @@ export interface WaveNode {
 }
 
 /**
+ * Get the best available package name for a wave node.
+ * Prefers source.packageName, falls back to metadata name, then displayName.
+ */
+export function getNodePackageName(node: WaveNode): string {
+  return node.source.packageName ?? node.metadata?.name ?? node.displayName;
+}
+
+/**
  * The complete resolved dependency graph produced by the wave engine.
  */
 export interface WaveGraph {

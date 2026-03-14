@@ -15,15 +15,18 @@
 
 import type { CommandResult, ExecutionContext } from '../../../types/index.js';
 import type { WaveResult, WaveNode } from './types.js';
+import { getNodePackageName } from './types.js';
 import type { NormalizedInstallOptions } from '../orchestrator/types.js';
 import type { InstallOrchestrator } from '../orchestrator/orchestrator.js';
 import type { InstallReportData } from '../install-reporting.js';
+import type { Platform } from '../../platforms.js';
 import { IndexWriteCollector } from './index-write-collector.js';
 import { BufferedOutputAdapter } from '../../ports/buffered-output.js';
 import { runWithConcurrency } from '../../../utils/concurrency-pool.js';
 import { updateWorkspaceIndex } from './index-updater.js';
 import { resolveOutput } from '../../ports/resolve.js';
 import { getInstalledPackageVersion } from '../../openpackage.js';
+import { computePlatformSkips, type PlatformSkipInfo } from './platform-filter.js';
 import { logger } from '../../../utils/logger.js';
 
 // ============================================================================
@@ -35,6 +38,8 @@ export interface WaveInstallerOptions {
   concurrencyLimit?: number;
   /** Stop processing remaining packages on first failure (default: false) */
   failFast?: boolean;
+  /** Root-resolved platforms for per-dependency platform filtering */
+  rootPlatforms?: Platform[];
 }
 
 export interface WaveInstallResult {
@@ -45,6 +50,8 @@ export interface WaveInstallResult {
   /** Collected report data from each successful install (for merged display) */
   reportDataList: InstallReportData[];
   warnings: string[];
+  /** Dependencies skipped due to platform incompatibility */
+  platformSkipped: PlatformSkipInfo[];
 }
 
 // ============================================================================
@@ -129,7 +136,7 @@ export async function installInWaves(
   execContext: ExecutionContext,
   installerOptions?: WaveInstallerOptions
 ): Promise<WaveInstallResult> {
-  const { concurrencyLimit = 4, failFast = false } = installerOptions ?? {};
+  const { concurrencyLimit = 4, failFast = false, rootPlatforms } = installerOptions ?? {};
   const force = options.force ?? false;
   const targetDir = execContext.targetDir;
   const realOutput = resolveOutput(execContext);
@@ -139,6 +146,17 @@ export async function installInWaves(
     skipManifestUpdate: true,
     _skipDependencyInstall: true,
   };
+
+  // Compute platform-aware skips if root platforms are provided
+  const platformSkipResult = rootPlatforms?.length
+    ? computePlatformSkips(waveResult.graph, rootPlatforms)
+    : null;
+
+  /** Build per-node options with narrowed platforms when platform filtering is active. */
+  function buildNodeOptions(nodeId: string): NormalizedInstallOptions {
+    const effectivePlatforms = platformSkipResult?.effectivePlatforms.get(nodeId);
+    return effectivePlatforms ? { ...depOptions, platforms: effectivePlatforms } : depOptions;
+  }
 
   let totalInstalled = 0;
   let totalFailed = 0;
@@ -154,7 +172,7 @@ export async function installInWaves(
   for (const [waveNum, nodes] of waveGroups) {
     if (aborted) break;
 
-    // Filter out marketplace nodes and already-installed packages
+    // Filter out marketplace, platform-incompatible, and already-installed packages
     const installableNodes: WaveNode[] = [];
     for (const node of nodes) {
       if (node.isMarketplace) {
@@ -162,7 +180,13 @@ export async function installInWaves(
         continue;
       }
 
-      const packageName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+      // Platform-incompatible dependencies are skipped entirely
+      if (platformSkipResult?.skippedNodes.has(node.id)) {
+        totalSkipped++;
+        continue;
+      }
+
+      const packageName = getNodePackageName(node);
       if (!force) {
         const installedVersion = await getInstalledPackageVersion(packageName, targetDir);
         if (installedVersion) {
@@ -202,7 +226,7 @@ export async function installInWaves(
       // spurious namespacing.
       const taskMeta: Array<{ node: WaveNode; packageName: string; input: string }> = [];
       const tasks = installableNodes.map((node) => {
-        const packageName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+        const packageName = getNodePackageName(node);
         const input = nodeToInstallInput(node)!;
         taskMeta.push({ node, packageName, input });
 
@@ -216,7 +240,7 @@ export async function installInWaves(
             commitOutputMode: undefined,
           };
 
-          const result = await orchestrator.execute(input, depOptions, nodeExecContext);
+          const result = await orchestrator.execute(input, buildNodeOptions(node.id), nodeExecContext);
           return { result, packageName, buffered };
         };
       });
@@ -263,11 +287,11 @@ export async function installInWaves(
       for (const node of installableNodes) {
         if (aborted) break;
 
-        const packageName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+        const packageName = getNodePackageName(node);
         const input = nodeToInstallInput(node)!;
 
         try {
-          const result = await orchestrator.execute(input, depOptions, execContext);
+          const result = await orchestrator.execute(input, buildNodeOptions(node.id), execContext);
           if (result.success) {
             totalInstalled++;
             allResults.push({ id: packageName, success: true });
@@ -299,5 +323,8 @@ export async function installInWaves(
     results: allResults,
     reportDataList: allReportData,
     warnings: allWarnings,
+    platformSkipped: platformSkipResult
+      ? [...platformSkipResult.skippedNodes.values()]
+      : [],
   };
 }

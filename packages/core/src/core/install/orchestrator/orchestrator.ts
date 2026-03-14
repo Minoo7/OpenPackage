@@ -33,8 +33,8 @@ import { runUnifiedInstallPipeline } from '../unified/pipeline.js';
 import { runMultiContextPipeline } from '../unified/multi-context-pipeline.js';
 import { createAllStrategies } from './strategies/index.js';
 import { resolveWave, updateWorkspaceIndex } from '../wave-resolver/index.js';
-import { installInWaves } from '../wave-resolver/wave-installer.js';
-import type { WaveResolverOptions, WaveVersionConflict, WaveNode } from '../wave-resolver/types.js';
+import { installInWaves, type WaveInstallResult } from '../wave-resolver/wave-installer.js';
+import type { WaveResolverOptions, WaveVersionConflict } from '../wave-resolver/types.js';
 import { getManifestPathAtContentRoot } from '../wave-resolver/manifest-reader.js';
 import { handleListSelection } from '../list-handler.js';
 import { discoverResources } from '../resource-discoverer.js';
@@ -304,7 +304,8 @@ export class InstallOrchestrator {
       this,
       waveResult,
       options,
-      execContext
+      execContext,
+      { rootPlatforms: context.platforms }
     );
 
     // Update workspace index with dependency information
@@ -313,15 +314,8 @@ export class InstallOrchestrator {
     // Combine root result with dependency results
     const rootInstalled = (rootResult.data as { installed?: number })?.installed ?? 0;
 
-    if (waveInstallResult.failed > 0) {
-      const out = resolveOutput(execContext);
-      const failedItems = waveInstallResult.results.filter(r => !r.success);
-      const failedLines = failedItems.map(r => {
-        const reason = r.error ?? 'unknown error';
-        return `  ${r.id}: ${reason}`;
-      });
-      out.warn(`${waveInstallResult.failed} dependencies failed to install:\n${failedLines.join('\n')}`);
-    }
+    const out = resolveOutput(execContext);
+    logWaveInstallWarnings(out, waveInstallResult);
 
     return {
       success: rootResult.success && waveInstallResult.failed === 0,
@@ -886,19 +880,13 @@ export class InstallOrchestrator {
       this,
       waveResult,
       options,
-      execContext
+      execContext,
+      { rootPlatforms: workspaceContext?.platforms ?? [] }
     );
 
     const { installed, failed, skipped, results } = waveInstallResult;
 
-    if (failed > 0) {
-      const failedItems = results.filter((r: { success: boolean }) => !r.success);
-      const failedLines = failedItems.map((r: { id: string; error?: string }) => {
-        const reason = r.error ?? 'unknown error';
-        return `  ${r.id}: ${reason}`;
-      });
-      out.warn(`${failed} packages failed to install:\n${failedLines.join('\n')}`);
-    }
+    logWaveInstallWarnings(out, waveInstallResult);
     out.success(`Installation complete: ${installed} installed${failed > 0 ? `, ${failed} failed` : ''}${skipped > 0 ? `, ${skipped} skipped` : ''}`);
 
     return {
@@ -967,41 +955,20 @@ async function warnOrphanedPlatforms(
 }
 
 /**
- * Reconstruct an install input string from a WaveNode's declaration.
- * This produces the same format that classifyInput() expects:
- *   - Git deps: the declaration name (e.g. 'gh@owner/repo/path/to/resource')
- *   - Path deps: the absolute filesystem path
- *   - Registry deps: 'name@version' or just 'name'
+ * Log failed and platform-skipped dependency warnings from a wave install result.
  */
-function nodeToInstallInput(node: WaveNode): string | null {
-  const decl = node.declarations[0];
-  if (!decl) return null;
-
-  if (node.sourceType === 'git') {
-    // Git deps: the declaration name is already in gh@owner/repo/path form.
-    // If not (e.g. bare URL deps), reconstruct from url + path.
-    if (decl.name && decl.name.startsWith('gh@')) {
-      return decl.name;
-    }
-    // Fallback: reconstruct from url
-    if (decl.url) {
-      let input = decl.url;
-      if (decl.ref) input += `#${decl.ref}`;
-      return input;
-    }
-    return decl.name || null;
+function logWaveInstallWarnings(out: OutputPort, result: WaveInstallResult): void {
+  if (result.failed > 0) {
+    const failedItems = result.results.filter(r => !r.success);
+    const failedLines = failedItems.map(r => {
+      const reason = r.error ?? 'unknown error';
+      return `  ${r.id}: ${reason}`;
+    });
+    out.warn(`${result.failed} dependencies failed to install:\n${failedLines.join('\n')}`);
   }
-
-  if (node.sourceType === 'path') {
-    // Path deps: use the absolute path from the resolved source
-    return node.source.absolutePath ?? node.source.contentRoot ?? decl.path ?? null;
+  for (const skip of result.platformSkipped) {
+    out.info(`  Skipped ${skip.packageName}: ${skip.reason}`);
   }
-
-  // Registry deps: name with optional version
-  const name = decl.name;
-  if (!name) return null;
-  const version = node.resolvedVersion ?? decl.version;
-  return version && version !== '*' ? `${name}@${version}` : name;
 }
 
 /**

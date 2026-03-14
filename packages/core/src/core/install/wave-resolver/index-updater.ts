@@ -9,6 +9,7 @@
 
 import { readWorkspaceIndex, writeWorkspaceIndex } from '../../../utils/workspace-index-yml.js';
 import type { WaveGraph } from './types.js';
+import { getNodePackageName } from './types.js';
 import { logger } from '../../../utils/logger.js';
 import { classifyIndexSourceType } from '../../source-mutability.js';
 import { isQualifiedName, buildQualifiedName } from '../../../utils/qualified-name.js';
@@ -44,7 +45,7 @@ export async function updateWorkspaceIndex(
     // Skip marketplace nodes and nodes without a name
     if (node.isMarketplace) continue;
 
-    const packageName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+    const packageName = getNodePackageName(node);
     if (!packageName) continue;
 
     const existing = index.packages[packageName];
@@ -64,7 +65,7 @@ export async function updateWorkspaceIndex(
       const childNode = graph.nodes.get(childId);
       if (childNode) {
         const childName =
-          childNode.source.packageName ?? childNode.metadata?.name ?? childNode.displayName;
+          getNodePackageName(childNode);
         if (childName) {
           dependencies.push(childName);
         }
@@ -95,7 +96,7 @@ export async function updateWorkspaceIndex(
   const rootToName = new Map<string, string>();
   for (const node of graph.nodes.values()) {
     if (node.isMarketplace) continue;
-    const name = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+    const name = getNodePackageName(node);
     const root = node.contentRoot ?? node.source.contentRoot ?? node.source.absolutePath;
     if (name && root) {
       rootToName.set(root.replace(/\\/g, '/'), name);
@@ -104,7 +105,7 @@ export async function updateWorkspaceIndex(
 
   for (const node of graph.nodes.values()) {
     if (node.isMarketplace) continue;
-    const nodeName = node.source.packageName ?? node.metadata?.name ?? node.displayName;
+    const nodeName = getNodePackageName(node);
     if (!nodeName) continue;
     const nodeContentRoot = node.contentRoot ?? node.source.contentRoot ?? node.source.absolutePath;
     if (!nodeContentRoot) continue;

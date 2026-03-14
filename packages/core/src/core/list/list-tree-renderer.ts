@@ -196,15 +196,24 @@ export function renderResource<TFile>(
 /**
  * Flatten resource groups into a single sorted list of resources.
  * Shared by resources view, deps view, and remote package detail.
+ * Package containers are sorted to the end so standalone resources
+ * are easier to scan before diving into nested package contents.
  */
 export function flattenResourceGroups<T extends { name: string; files: unknown[] }>(
   groups: Array<{ resourceType: string; resources: T[] }>
 ): T[] {
-  const flat: T[] = [];
+  const regular: T[] = [];
+  const packages: T[] = [];
   for (const group of groups) {
-    flat.push(...group.resources);
+    if (group.resourceType === 'packages') {
+      packages.push(...group.resources);
+    } else {
+      regular.push(...group.resources);
+    }
   }
-  return flat.sort((a, b) => a.name.localeCompare(b.name));
+  regular.sort((a, b) => a.name.localeCompare(b.name));
+  packages.sort((a, b) => a.name.localeCompare(b.name));
+  return [...regular, ...packages];
 }
 
 /**

@@ -155,7 +155,7 @@ function formatOutput(
 
     case 'adopt':
       out.success(
-        `${dryPrefix}Adopted ${data.resourceName} into ${data.destPackage}`
+        `${dryPrefix}Moved ${data.resourceName} into ${data.destPackage}`
       );
       if (data.movedFiles) {
         out.message(`  ${data.movedFiles} file${data.movedFiles !== 1 ? 's' : ''} added`);

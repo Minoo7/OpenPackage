@@ -150,7 +150,8 @@ const testFiles: string[] = [
   'tests/utils/path-display-formatter.test.ts',
 
   // Integration
-  'tests/integration/cwd-global.test.ts'
+  'tests/integration/cwd-global.test.ts',
+  'tests/integration/nested-deps.test.ts'
 ];
 
 function runTestFile(relPath: string): void {

@@ -1,0 +1,10 @@
+name: test-nested-b
+version: 1.0.0
+description: Test package B for nested dependency e2e test
+dependencies:
+  - name: test-nested-c
+    path: ../package-c
+  - name: "gh@wshobson/agents/plugins/shell-scripting"
+    url: https://github.com/wshobson/agents.git
+    path: plugins/shell-scripting
+dev-dependencies: []

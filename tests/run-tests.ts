@@ -151,7 +151,8 @@ const testFiles: string[] = [
 
   // Integration
   'tests/integration/cwd-global.test.ts',
-  'tests/integration/nested-deps.test.ts'
+  'tests/integration/nested-deps.test.ts',
+  'tests/integration/install-flags.test.ts'
 ];
 
 function runTestFile(relPath: string): void {

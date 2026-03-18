@@ -1,10 +1,14 @@
 name: test-nested-a
 version: 1.0.0
-description: Test package A for nested dependency e2e test
+description: Test package A (root) for lifecycle e2e test
 dependencies:
   - name: test-nested-b
     path: ../package-b
+  - name: test-nested-c
+    path: ../package-c
   - name: "gh@anthropics/skills/skills/claude-api"
     url: https://github.com/anthropics/skills.git
     path: skills/claude-api
-dev-dependencies: []
+dev-dependencies:
+  - name: test-nested-dev
+    path: ../package-dev

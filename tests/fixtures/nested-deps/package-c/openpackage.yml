@@ -1,5 +1,7 @@
 name: test-nested-c
 version: 1.0.0
-description: Test package C (leaf) for nested dependency e2e test
-dependencies: []
+description: Test package C (mid) for lifecycle e2e test
+dependencies:
+  - name: test-nested-d
+    path: ../package-d
 dev-dependencies: []

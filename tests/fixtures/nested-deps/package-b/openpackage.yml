@@ -1,9 +1,9 @@
 name: test-nested-b
 version: 1.0.0
-description: Test package B for nested dependency e2e test
+description: Test package B (mid) for lifecycle e2e test
 dependencies:
-  - name: test-nested-c
-    path: ../package-c
+  - name: test-nested-d
+    path: ../package-d
   - name: "gh@wshobson/agents/plugins/shell-scripting"
     url: https://github.com/wshobson/agents.git
     path: plugins/shell-scripting

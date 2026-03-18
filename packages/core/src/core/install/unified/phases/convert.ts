@@ -255,21 +255,34 @@ async function loadPackageFiles(
     return relevant;
   }
 
+  // Build set of platform dot-directories from platform detection markers
+  // so that .claude/, .cursor/, .agents/ etc. are walked for format conversion
+  // while .git/, .github/, .vscode/ etc. are still skipped.
+  const platformDotDirs = new Set<string>();
+  const platformDefs = getPlatformDefinitions(opts.targetDir);
+  for (const def of Object.values(platformDefs)) {
+    for (const marker of (def as any).detection || []) {
+      if (typeof marker === 'string' && marker.startsWith('.')) {
+        platformDotDirs.add(marker.split('/')[0]);
+      }
+    }
+  }
+
   async function walk(dir: string, baseDir: string, opts: { targetDir: string; matchedPattern?: string }): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      
-      // Skip hidden directories and node_modules
+
+      // Skip hidden directories (except known platform directories) and node_modules
       if (entry.isDirectory()) {
-        if (entry.name.startsWith('.') && entry.name !== '.claude-plugin') {
+        if (entry.name.startsWith('.') && !platformDotDirs.has(entry.name)) {
           continue;
         }
         if (entry.name === 'node_modules') {
           continue;
         }
-        
+
         await walk(fullPath, baseDir, opts);
       } else {
         const relativePath = getRelativePathFromBase(fullPath, baseDir);

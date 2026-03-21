@@ -56,6 +56,8 @@ import { smartEquals, smartNotEquals } from '../../utils/path-comparison.js';
 import { stripPlatformSuffixFromFilename } from './platform-suffix-handler.js';
 import { parseMarkdownDocument, serializeMarkdownDocument } from './markdown.js';
 import { STRUCTURED_FORMAT_EXTENSIONS, MARKDOWN_EXTENSIONS } from '../../constants/index.js';
+import { schemaRegistry } from '../install/schema-registry.js';
+import { validateFrontmatterAgainstSchema } from './source-schema-validator.js';
 
 /**
  * Determine if a flow is a pass-through (source bytes == target bytes).
@@ -119,7 +121,6 @@ export class DefaultFlowExecutor implements FlowExecutor {
    */
   async executeFlow(flow: Flow, context: FlowContext): Promise<FlowResult> {
     const startTime = Date.now();
-
     try {
       // Resolve switch expressions in 'from' field
       let resolvedFrom = flow.from;
@@ -469,6 +470,25 @@ export class DefaultFlowExecutor implements FlowExecutor {
 
     let data = sourceContent.data;
     let transformed = false;
+
+    // Validate source frontmatter against declared schema (if present)
+    if (flow.sourceSchema) {
+      const schema = schemaRegistry.loadSchema(flow.sourceSchema);
+      if (schema) {
+        const dataToValidate = (data && typeof data === 'object' && 'frontmatter' in data)
+          ? data.frontmatter
+          : (typeof data === 'object' && data !== null ? data : null);
+
+        if (dataToValidate) {
+          const schemaWarnings = validateFrontmatterAgainstSchema(
+            dataToValidate,
+            schema,
+            path.relative(context.packageRoot, sourcePath),
+          );
+          warnings.push(...schemaWarnings);
+        }
+      }
+    }
 
     try {
       // Step 2: Extract JSONPath (if specified)

@@ -69,7 +69,6 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
     const { packageName, packageRoot, workspaceRoot, platform, dryRun } = context;
 
     this.logStrategySelection(context);
-
     // Check if platform uses flows
     if (!platformUsesFlows(platform, workspaceRoot)) {
       return this.createEmptyResult();
@@ -187,6 +186,13 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
         const executionResult = await executeImportFlows(prunedSources, execFlowContext);
         const result = convertToInstallResult(executionResult, packageName, platform, dryRun);
 
+        // Surface schema validation warnings
+        if (executionResult.warnings?.length) {
+          for (const w of executionResult.warnings) {
+            logger.warn(w);
+          }
+        }
+
         // Surface conflict warnings as additional FlowConflictReport entries
         for (const msg of conflictWarnings) {
           logger.warn(msg);
@@ -213,10 +219,17 @@ export class FlowBasedInstallStrategy extends BaseStrategy {
 
     // Execute flows (no targets to conflict-check, or conflict resolution errored)
     const executionResult = await executeImportFlows(filteredSources, flowContext);
-    
+
+    // Surface schema validation warnings
+    if (executionResult.warnings?.length) {
+      for (const w of executionResult.warnings) {
+        logger.warn(w);
+      }
+    }
+
     // Convert to result
     const result = convertToInstallResult(executionResult, packageName, platform, dryRun);
-    
+
     this.logResults(result, context);
     
     return result;

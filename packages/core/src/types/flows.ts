@@ -60,6 +60,9 @@ export interface Flow {
 
   /** Whether this flow is a catch-all fallback (excluded from discovery/scanning) */
   fallback?: boolean;
+
+  /** Schema path for source validation (resolved from flow's from.schema) */
+  sourceSchema?: string;
 }
 
 /**

@@ -45,6 +45,13 @@ export async function executePullNewActions(
     init, packageName, packageRoot, cwd, options.dryRun, sourceKeyFilter,
   );
 
+  // Surface schema validation warnings
+  if (aggregated.warnings?.length) {
+    for (const w of aggregated.warnings) {
+      logger.warn(w);
+    }
+  }
+
   // Translate to SyncFileResult[]
   const results: SyncFileResult[] = [];
   const processedSourceKeys = new Set(Object.keys(aggregated.fileMapping));

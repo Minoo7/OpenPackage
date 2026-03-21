@@ -245,5 +245,6 @@ function emptyExecutionResult(): ExecutionResult {
     fileMapping: {},
     conflicts: [],
     errors: [],
+    warnings: [],
   };
 }

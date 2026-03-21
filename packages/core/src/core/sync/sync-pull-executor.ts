@@ -49,6 +49,13 @@ export async function executePullActions(
     init, packageName, packageRoot, cwd, options.dryRun, sourceKeyFilter,
   );
 
+  // Surface schema validation warnings
+  if (aggregated.warnings?.length) {
+    for (const w of aggregated.warnings) {
+      logger.warn(w);
+    }
+  }
+
   const syncResults = translateToSyncResults(pullActions, aggregated);
 
   // Update workspace index hashes from pipeline results

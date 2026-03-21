@@ -43,6 +43,7 @@ export interface ExecutionResult {
     error: Error;
     message: string;
   }>;
+  warnings: string[];
 }
 
 /**
@@ -73,9 +74,10 @@ export async function executeFlowsForSources(
     targetPaths: [],
     fileMapping: {},
     conflicts: [],
-    errors: []
+    errors: [],
+    warnings: []
   };
-  
+
   const executor = context.executor || createFlowExecutor();
   
   for (const [flow, sources] of flowSources) {
@@ -114,7 +116,11 @@ export async function executeFlowsForSources(
         if (sourceResult.conflicts) {
           result.conflicts.push(...sourceResult.conflicts);
         }
-        
+
+        if (sourceResult.warnings) {
+          result.warnings.push(...sourceResult.warnings);
+        }
+
         if (!sourceResult.success) {
           result.success = false;
           if (sourceResult.error) {
@@ -158,11 +164,12 @@ interface SourceProcessingResult {
     losers: string[];
   }>;
   error?: Error;
+  warnings?: string[];
 }
 
 /**
  * Process a single source file through a flow
- * 
+ *
  * @param flow - Flow to execute
  * @param sourceRel - Source file path (relative to package root)
  * @param context - Execution context
@@ -176,7 +183,7 @@ async function processSourceFile(
   executor: FlowExecutor
 ): Promise<SourceProcessingResult> {
   const sourceAbs = join(context.packageRoot, sourceRel);
-  
+
   // Extract captured name from pattern
   const firstPattern = getFirstFromPattern(flow.from);
   const capturedName = extractCapturedName(sourceRel, firstPattern);
@@ -220,11 +227,26 @@ async function processSourceFile(
   const remappedRel = context.targetPathRemap?.get(targetRelNorm);
   const finalTargetRel = remappedRel ?? targetRelNorm;
 
+  // Extract source schema path from original flow (FlowPatternValue has .schema)
+  let sourceSchemaPath: string | undefined;
+  const originalFrom = flow.from;
+  if (typeof originalFrom === 'object' && originalFrom !== null && !('$switch' in originalFrom)) {
+    if (Array.isArray(originalFrom)) {
+      const first = originalFrom[0];
+      if (typeof first === 'object' && first !== null && 'schema' in first) {
+        sourceSchemaPath = (first as { schema?: string }).schema;
+      }
+    } else if ('schema' in originalFrom) {
+      sourceSchemaPath = (originalFrom as { schema?: string }).schema;
+    }
+  }
+
   // Create concrete flow with resolved paths
   const concreteFlow: Flow = {
     ...flow,
     from: sourceRel,
-    to: finalTargetRel
+    to: finalTargetRel,
+    ...(sourceSchemaPath ? { sourceSchema: sourceSchemaPath } : {}),
   };
   
   // Execute flow
@@ -298,6 +320,11 @@ async function processSourceFile(
     losers: conflict.losers
   })) || [];
   
+  // Collect non-skip warnings (e.g., schema validation warnings)
+  const validationWarnings = flowResult.warnings?.filter(
+    w => w !== 'Flow skipped due to condition' && w !== 'No files matched pattern'
+  );
+
   return {
     success: true,
     processed: true,
@@ -305,7 +332,8 @@ async function processSourceFile(
     targetPath: target,
     fileMapping,
     mappingKey: sourceRel,
-    conflicts
+    conflicts,
+    ...(validationWarnings && validationWarnings.length > 0 ? { warnings: validationWarnings } : {}),
   };
 }
 
@@ -414,7 +442,8 @@ export function aggregateExecutionResults(results: ExecutionResult[]): Execution
     targetPaths: [],
     fileMapping: {},
     conflicts: [],
-    errors: []
+    errors: [],
+    warnings: []
   };
   
   for (const result of results) {

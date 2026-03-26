@@ -1,6 +1,6 @@
 import { basename, join, relative } from 'path';
 import type { InstallOptions, ExecutionContext } from '../../../types/index.js';
-import type { InstallationContext, PackageSource, InstallScope } from './context.js';
+import type { InstallationContext, PackageSource } from './context.js';
 import { classifyPackageInput } from '../package-input.js';
 import { normalizePlatforms } from '../../platform/platform-mapper.js';
 import { parsePackageYml } from '../../../utils/package-yml.js';
@@ -8,16 +8,16 @@ import { getLocalPackageYmlPath, getLocalOpenPackageDir } from '../../../utils/p
 import { exists } from '../../../utils/fs.js';
 import { createWorkspacePackageYml, ensureLocalOpenPackageStructure } from '../../package-management.js';
 import { logger } from '../../../utils/logger.js';
-import { resolveDeclaredPath } from '../../../utils/path-resolution.js';
 import type { ResourceInstallationSpec } from '../convenience-matchers.js';
 
 /**
  * Result of building contexts for bulk install.
- * Workspace root is separate from dependency contexts so the orchestrator can run it as a distinct stage.
+ * Workspace root context is built here; dependency resolution is handled
+ * separately by the wave engine in runRecursiveBulkInstall.
  */
 export interface BulkInstallContextsResult {
   workspaceContext: InstallationContext | null;
-  dependencyContexts: InstallationContext[];
+  hasDependencies: boolean;
 }
 
 /**
@@ -211,147 +211,30 @@ export async function buildInstallContext(
 
 /**
  * Build contexts for bulk installation.
- * Returns workspace root and dependency contexts separately so the orchestrator can run workspace as a distinct stage.
+ * Returns workspace root context and a flag indicating whether the manifest declares dependencies.
+ * Actual dependency resolution and installation is handled by the wave engine in runRecursiveBulkInstall.
  */
 async function buildBulkInstallContexts(
   execContext: ExecutionContext,
   options: InstallOptions
 ): Promise<BulkInstallContextsResult> {
   const cwd = execContext.targetDir;
-  const dependencyContexts: InstallationContext[] = [];
 
-  // First, try to build workspace root context (run as distinct stage, not in dependency loop)
+  // Build workspace root context (run as distinct stage before dependencies)
   const workspaceContext = await buildWorkspaceRootInstallContext(execContext, options, 'install');
 
   // Ensure workspace manifest exists before reading
   await createWorkspacePackageYml(cwd);
 
-  // Read openpackage.yml and create context for each package
+  // Check whether the manifest declares any dependencies (for empty-manifest messaging)
   const opkgYmlPath = getLocalPackageYmlPath(cwd);
   const opkgYml = await parsePackageYml(opkgYmlPath);
 
-  // Get workspace package name to exclude it from bulk install
-  const workspacePackageName = workspaceContext?.source.packageName;
+  const deps = ((opkgYml as any).packages ?? (opkgYml as any).dependencies ?? []) as any[];
+  const devDeps = (((opkgYml as any).devDependencies ?? (opkgYml as any)['dev-dependencies'] ?? []) as any[]);
+  const hasDependencies = [...deps, ...devDeps].filter(Boolean).length > 0;
 
-  // Support both legacy `packages:` and current `dependencies:` + `dev-dependencies:` keys.
-  const deps = ((opkgYml as any).packages ??
-    (opkgYml as any).dependencies ??
-    []) as any[];
-  const devDeps = (((opkgYml as any).devDependencies ??
-    (opkgYml as any)['dev-dependencies'] ??
-    []) as any[]);
-
-  // Merge + dedupe to avoid double-install from duplicate manifest entries
-  const allDeps: any[] = [...deps, ...devDeps].filter(Boolean);
-  const seen = new Set<string>();
-
-  if (allDeps.length > 0) {
-    for (const dep of allDeps) {
-      const dedupeKey = JSON.stringify({
-        name: dep?.name ?? null,
-        url: dep?.url ?? dep?.git ?? null,
-        ref: dep?.ref ?? null,
-        path: dep?.path ?? null,
-        version: dep?.version ?? null,
-        base: dep?.base ?? null
-      });
-      if (seen.has(dedupeKey)) {
-        continue;
-      }
-      seen.add(dedupeKey);
-
-      // Skip if this package matches the workspace package name
-      if (workspacePackageName && dep.name === workspacePackageName) {
-        continue;
-      }
-      
-      let source: PackageSource;
-      
-      if (dep.git || dep.url) {
-        // Git source - handle both old (git) and new (url) formats
-        const gitUrlRaw = dep.url || dep.git!;
-        
-        // Parse url field to extract ref if embedded
-        const [gitUrl, embeddedRef] = gitUrlRaw.includes('#') 
-          ? gitUrlRaw.split('#', 2)
-          : [gitUrlRaw, undefined];
-        
-        // Use embedded ref if present, otherwise fall back to separate ref field
-        const gitRef = embeddedRef || dep.ref;
-
-        // Bulk installs should match the resource-model behavior used by individual installs.
-        // Many manifests use `name: gh@owner/repo/<resourcePath>` and/or `path:` to indicate a resource
-        // (directory or file) within the repo. Passing that as `gitPath` breaks because gitPath implies
-        // "package lives in subdirectory", and can be a file path (invalid).
-        let resourcePathFromName: string | undefined;
-        const depName = String(dep.name ?? '');
-        if (depName.startsWith('gh@')) {
-          const tail = depName.slice(3);
-          const parts = tail.split('/').filter(Boolean);
-          if (parts.length > 2) {
-            resourcePathFromName = parts.slice(2).join('/');
-          }
-        }
-        const effectiveResourcePath: string | undefined = dep.path || resourcePathFromName;
-        const shouldTreatPathAsResource = depName.startsWith('gh@');
-        
-        source = {
-          type: 'git',
-          packageName: dep.name,
-          gitUrl,
-          gitRef,
-          gitPath: shouldTreatPathAsResource ? undefined : dep.path,
-          resourcePath: shouldTreatPathAsResource ? effectiveResourcePath : undefined,
-          manifestBase: dep.base  // Phase 5: Pass manifest base to source
-        };
-      } else if (dep.path) {
-        // Path source - resolve tilde paths before creating source
-        const resolved = resolveDeclaredPath(dep.path, cwd);
-        const isTarball = dep.path.endsWith('.tgz') || dep.path.endsWith('.tar.gz');
-        
-        source = {
-          type: 'path',
-          packageName: dep.name,
-          localPath: resolved.absolute,
-          sourceType: isTarball ? 'tarball' : 'directory',
-          manifestBase: dep.base  // Phase 5: Pass manifest base to source
-        };
-      } else {
-        // Registry source
-        source = {
-          type: 'registry',
-          packageName: dep.name,
-          version: dep.version,
-          manifestBase: dep.base  // Phase 5: Pass manifest base to source
-        };
-      }
-      
-      // Phase 5: Create context with base field from manifest if present
-      const context: InstallationContext = {
-        execution: execContext,
-        targetDir: execContext.targetDir,
-        source,
-        mode: 'install',
-        options,
-        platforms: normalizePlatforms(options.platforms) || [],
-        installScope: 'full',
-        resolvedPackages: [],
-        warnings: [],
-        errors: []
-      };
-      
-      // Phase 5: Store base from manifest for reproducibility
-      // When base is present, skip base detection and use manifest value
-      if (dep.base) {
-        context.baseRelative = dep.base;
-        context.baseSource = 'manifest';
-      }
-      
-      dependencyContexts.push(context);
-    }
-  }
-
-  return { workspaceContext: workspaceContext ?? null, dependencyContexts };
+  return { workspaceContext: workspaceContext ?? null, hasDependencies };
 }
 
 /**

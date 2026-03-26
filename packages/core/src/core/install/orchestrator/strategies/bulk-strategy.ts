@@ -49,15 +49,15 @@ export class BulkInstallStrategy extends BaseInstallStrategy {
     const raw = await buildInstallContext(execContext, undefined, options);
 
     const bulk = raw as BulkInstallContextsResult;
-    if (bulk?.dependencyContexts && 'workspaceContext' in bulk) {
-      const { workspaceContext: wsCtx, dependencyContexts: depCtxs } = bulk;
-      if (depCtxs.length === 0 && !wsCtx) {
+    if ('hasDependencies' in bulk) {
+      const { workspaceContext: wsCtx, hasDependencies } = bulk;
+      if (!hasDependencies && !wsCtx) {
         return this.createNormalResult(context);
       }
       return {
         context,
         specialHandling: 'multi-resource',
-        resourceContexts: depCtxs,
+        resourceContexts: [],
         workspaceContext: wsCtx ?? null
       };
     }

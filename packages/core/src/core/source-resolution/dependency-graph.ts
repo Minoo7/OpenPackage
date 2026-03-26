@@ -1,13 +1,13 @@
 import path from 'path';
 
-import { FILE_PATTERNS, DEPENDENCY_ARRAYS, DEFAULT_VERSION_CONSTRAINT, MUTABILITY, SOURCE_TYPES } from '../../constants/index.js';
+import { FILE_PATTERNS, DEPENDENCY_ARRAYS, MUTABILITY, SOURCE_TYPES } from '../../constants/index.js';
 import { exists } from '../../utils/fs.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
 import { resolveDeclaredPath } from '../../utils/path-resolution.js';
 import { normalizePackageName } from '../../utils/package-name.js';
 import { isRegistryPath } from '../source-mutability.js';
 import { cloneGitToRegistry } from '../git-clone-registry.js';
-import { resolveRegistryVersion } from './resolve-registry-version.js';
+import { resolveNamedDependency } from './resolve-named-dependency.js';
 import { resolvePackageSource } from './resolve-package-source.js';
 import type { DependencyGraphNode, ResolvedPackageSource } from './types.js';
 
@@ -68,17 +68,7 @@ async function resolveFromManifest(
     };
   }
 
-  const constraint = dep.version ?? DEFAULT_VERSION_CONSTRAINT;
-  const registry = await resolveRegistryVersion(normalizedName, { constraint });
-  return {
-    packageName: normalizedName,
-    absolutePath: registry.absolutePath,
-    declaredPath: registry.declaredPath,
-    mutability: MUTABILITY.IMMUTABLE,
-    version: registry.version,
-    sourceType: SOURCE_TYPES.REGISTRY,
-    resolutionSource: registry.resolutionSource
-  };
+  return resolveNamedDependency(normalizedName, manifestDir, { version: dep.version });
 }
 
 async function loadManifestDependencies(

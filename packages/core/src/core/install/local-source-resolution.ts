@@ -2,7 +2,7 @@ import os from 'os';
 import path from 'path';
 
 import { DIR_PATTERNS, OPENPACKAGE_DIRS, UNVERSIONED } from '../../constants/index.js';
-import { listPackageVersions, getPackageVersionPath } from '../directory.js';
+import { listPackageVersions } from '../directory.js';
 import { exists } from '../../utils/fs.js';
 import { parsePackageYml } from '../../utils/package-yml.js';
 import { getLocalPackageDir } from '../../utils/paths.js';
@@ -112,25 +112,20 @@ export async function resolveCandidateVersionsForInstall(args: {
   };
 }
 
+// Dynamic import to break circular dependency:
+// local-source-resolution → resolve-named-dependency → resolve-registry-version → local-source-resolution
+let _resolveNamedDependency: typeof import('../source-resolution/resolve-named-dependency.js').resolveNamedDependency;
+
 export async function resolvePackageContentRoot(args: {
   cwd: string;
   packageName: string;
   version: string;
 }): Promise<string> {
-  const { cwd, packageName, version } = args;
-
-  const workspaceSource = await detectWorkspaceMutableSource(cwd, packageName);
-  if (workspaceSource) {
-    return workspaceSource.packageRootDir;
+  if (!_resolveNamedDependency) {
+    _resolveNamedDependency = (await import('../source-resolution/resolve-named-dependency.js')).resolveNamedDependency;
   }
-
-  const globalMutable = await detectGlobalMutableSource(packageName);
-  if (globalMutable) {
-    return globalMutable.packageRootDir;
-  }
-
-  const versionPath = getPackageVersionPath(packageName, version);
-  return versionPath;
+  const resolved = await _resolveNamedDependency(args.packageName, args.cwd, { version: args.version });
+  return resolved.absolutePath;
 }
 
 export async function maybeWarnHigherRegistryVersion(args: {

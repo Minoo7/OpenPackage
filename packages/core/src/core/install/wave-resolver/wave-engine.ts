@@ -12,7 +12,7 @@ import { createFetcher, computeWaveId, resolveSourceFromDeclaration } from './fe
 import { readManifestAtPath, extractDependencies } from './manifest-reader.js';
 import { getLocalPackageYmlPath } from '../../../utils/paths.js';
 import { parsePackageYml } from '../../../utils/package-yml.js';
-import { resolvePackageByName } from '../../package-name-resolution.js';
+import { resolveNamedDependency } from '../../source-resolution/resolve-named-dependency.js';
 import { logger } from '../../../utils/logger.js';
 
 const DEFAULT_MAX_NODES = 10_000;
@@ -136,30 +136,18 @@ export async function resolveWave(options: WaveResolverOptions): Promise<WaveRes
       const { decl, parentId, pathResolutionDir } = item;
       const declaredInDir = decl.depth === 0 ? pathResolutionDir : dirname(decl.declaredIn);
 
-      // For registry-only declarations, check local workspace/global path first.
-      // This mirrors the existing graph-builder behavior: when a package exists
-      // locally in the workspace or globally, prefer the local copy over fetching
-      // from the registry.
+      // For registry-only declarations, prefer local mutable copies over registry.
+      // Skip registry here — the fetcher handles registry resolution separately.
       let effectiveDecl = decl;
       if (!decl.path && !decl.url) {
         try {
-          const localResolved = await resolvePackageByName({
-            cwd: workspaceRoot,
-            packageName: decl.name,
-            checkCwd: false,
-            searchWorkspace: true,
-            searchGlobal: true,
-            searchRegistry: false
+          const resolved = await resolveNamedDependency(decl.name, workspaceRoot, {
+            version: decl.version,
+            skipRegistry: true
           });
-          if (
-            localResolved.found &&
-            localResolved.path &&
-            (localResolved.sourceType === 'workspace' || localResolved.sourceType === 'global')
-          ) {
-            effectiveDecl = { ...decl, path: localResolved.path };
-          }
+          effectiveDecl = { ...decl, path: resolved.absolutePath };
         } catch {
-          // Continue with original declaration
+          // Not found locally — continue with registry declaration
         }
       }
 

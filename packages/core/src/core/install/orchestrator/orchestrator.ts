@@ -769,8 +769,9 @@ export class InstallOrchestrator {
       }
     }
 
-    if (dependencyContexts.length === 0 && !workspaceContext) {
-      if (context.source.packageName === '__bulk__') {
+    // Bulk install: wave engine handles dependency resolution independently.
+    if (context.source.packageName === '__bulk__') {
+      if (!workspaceContext && dependencyContexts.length === 0) {
         out.warn('No packages found in openpackage.yml');
         out.info('\nTips:');
         out.info('  - Add packages to the "dependencies" array in openpackage.yml');
@@ -778,14 +779,14 @@ export class InstallOrchestrator {
         out.info('  - Use "opkg install <package-name>" to install a specific package');
         return { success: true, data: { installed: 0, skipped: 0 } };
       }
+      return this.runRecursiveBulkInstall(options, execContext, workspaceContext ?? undefined);
+    }
+
+    if (dependencyContexts.length === 0 && !workspaceContext) {
       return {
         success: false,
         error: 'No resources matched the specified filters'
       };
-    }
-
-    if (context.source.packageName === '__bulk__') {
-      return this.runRecursiveBulkInstall(options, execContext, workspaceContext ?? undefined);
     }
 
     // Subsumption filtering is handled centrally by runMultiContextPipeline

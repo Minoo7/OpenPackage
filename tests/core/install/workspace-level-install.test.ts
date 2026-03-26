@@ -75,9 +75,9 @@ async function testBulkInstallIncludesWorkspace() {
   const execContext = await createExecutionContext({ cwd: testDir });
   const result = await buildInstallContext(execContext, undefined, {}) as BulkInstallContextsResult;
 
-  assert.ok(result && 'workspaceContext' in result && 'dependencyContexts' in result, 'Should return bulk result with workspaceContext and dependencyContexts');
+  assert.ok(result && 'workspaceContext' in result && 'hasDependencies' in result, 'Should return bulk result with workspaceContext and hasDependencies');
   assert.ok(result.workspaceContext != null, 'Should have workspace context');
-  assert.ok(Array.isArray(result.dependencyContexts), 'dependencyContexts should be an array');
+  assert.equal(typeof result.hasDependencies, 'boolean', 'hasDependencies should be a boolean');
 
   const workspaceCtx = result.workspaceContext!;
   assert.equal(workspaceCtx.source.type, 'workspace', 'Workspace context should be workspace type');

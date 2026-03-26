@@ -59,9 +59,9 @@ dependencies:
       assert.ok(contexts != null && typeof contexts === 'object');
       assert.ok(!Array.isArray(contexts));
       assert.ok('workspaceContext' in contexts, 'result should have workspaceContext property');
-      assert.ok('dependencyContexts' in contexts, 'result should have dependencyContexts property');
-      const bulk = contexts as { workspaceContext: unknown; dependencyContexts: unknown[] };
-      assert.ok(Array.isArray(bulk.dependencyContexts), 'dependencyContexts should be an array');
+      assert.ok('hasDependencies' in contexts, 'result should have hasDependencies property');
+      const bulk = contexts as { workspaceContext: unknown; hasDependencies: boolean };
+      assert.strictEqual(typeof bulk.hasDependencies, 'boolean', 'hasDependencies should be a boolean');
       
     } finally {
       await rm(tmpDir, { recursive: true, force: true });

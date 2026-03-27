@@ -143,15 +143,20 @@ export async function runSyncPipeline(
     return aggregateSyncFileResults(resolvedName, []);
   }
 
-  // Resolve conflicts interactively if needed
+  // Handle conflicts: abort if no resolution strategy is available
   const conflicts = actions.filter(a => a.type === 'conflict');
   if (conflicts.length > 0) {
-    const prompt = resolvePrompt(ctx);
-    const resolved = await resolveConflictsInteractively(conflicts, prompt);
-
-    // Replace conflict actions with resolved ones
-    const nonConflicts = actions.filter(a => a.type !== 'conflict');
-    actions = [...nonConflicts, ...resolved];
+    const divergedFiles = conflicts.map(c => c.targetPath);
+    const dirHint = options.direction === 'push'
+      ? 'Use --force to overwrite source, or --pull first to update.'
+      : options.direction === 'pull'
+        ? 'Use --force to overwrite local changes, or --push first to save them.'
+        : 'Use --conflicts <workspace|source|skip> to resolve.';
+    throw new Error(
+      `Sync aborted: ${conflicts.length} diverged file(s) in ${resolvedName}.\n` +
+      `  ${divergedFiles.join('\n  ')}\n` +
+      `${dirHint}`
+    );
   }
 
   // Partition into push, pull, remove, and skip

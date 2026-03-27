@@ -11,7 +11,7 @@
  * | clean    | skip            | skip            | skip                |
  * | modified | push            | skip            | push                |
  * | outdated | skip            | pull            | pull                |
- * | diverged | push (ws wins)  | pull (src wins) | per --conflicts     |
+ * | diverged | per --conflicts | per --conflicts | per --conflicts     |
  * | merged   | push (extract)  | skip            | push (extract)      |
  */
 
@@ -93,15 +93,7 @@ function classifyDiverged(
   direction: SyncDirection,
   conflicts?: SyncConflictStrategy,
 ): SyncFileAction {
-  // Directional modes have deterministic resolution
-  if (direction === 'push') {
-    return { type: 'push', sourceKey, targetPath };
-  }
-  if (direction === 'pull') {
-    return { type: 'pull', sourceKey, targetPath };
-  }
-
-  // Bidirectional with explicit strategy
+  // Explicit strategy takes precedence regardless of direction
   if (conflicts === 'workspace') {
     return { type: 'push', sourceKey, targetPath };
   }

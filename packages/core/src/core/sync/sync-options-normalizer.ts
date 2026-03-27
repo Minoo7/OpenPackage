@@ -21,7 +21,9 @@ function validateConflictStrategy(value: string | undefined): SyncConflictStrate
  * Normalize sync options at the CLI boundary.
  *
  * - `--push` + `--pull` or neither → bidirectional
- * - `--force` → conflicts: 'workspace'
+ * - `--force` + `--push` → conflicts: 'workspace'
+ * - `--force` + `--pull` → conflicts: 'source'
+ * - `--force` alone → error (direction required)
  * - `--json` without explicit conflicts → conflicts: 'auto'
  * - Validates --conflicts values
  */
@@ -50,10 +52,16 @@ export function normalizeSyncOptions(raw: {
   // Validate --conflicts strategy
   const explicitConflicts = validateConflictStrategy(raw.conflicts);
 
-  // Resolve --force → conflicts: 'workspace' aliasing
+  // Resolve --force → direction-aware conflict strategy
   let conflicts = explicitConflicts;
   if (!conflicts && raw.force) {
-    conflicts = 'workspace';
+    if (direction === 'push') {
+      conflicts = 'workspace';
+    } else if (direction === 'pull') {
+      conflicts = 'source';
+    } else {
+      throw new Error('--force requires --push or --pull to determine conflict resolution direction');
+    }
   }
 
   // When --json is set and no explicit conflict strategy, default to 'auto'

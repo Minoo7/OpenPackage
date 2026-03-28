@@ -234,19 +234,24 @@
     ],
     "import": [
       {
+        "from": "**/AGENTS.md",
+        "to": "AGENTS.md",
+        "merge": "composite"
+      },
+      {
         "from": ".claude-plugin/plugin.json",
         "to": "openpackage.yml"
       },
       {
-        "from": "rules/**/*.md",
+        "from": "**/rules/**/*.md",
         "to": "rules/**/*.md"
       },
       {
-        "from": "commands/**/*.md",
+        "from": "**/commands/**/*.md",
         "to": "commands/**/*.md"
       },
       {
-        "from": "agents/**/*.md",
+        "from": "**/agents/**/*.md",
         "to": "agents/**/*.md",
         // No mapping when target platform is Claude (already in Claude format)
         "when": {
@@ -254,7 +259,7 @@
         }
       },
       {
-        "from": "agents/**/*.md",
+        "from": "**/agents/**/*.md",
         "to": "agents/**/*.md",
         // Apply reverse transformations when target platform is NOT Claude
         "when": {
@@ -302,7 +307,7 @@
         ]
       },
       {
-        "from": "skills/**/*",
+        "from": "**/skills/**/*",
         "to": "skills/**/*"
       },
       {

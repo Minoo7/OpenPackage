@@ -28,6 +28,7 @@ const testFiles: string[] = [
   'tests/core/install/manifest-git-url-migration.test.ts',
   'tests/core/install/manifest-subdirectory-migration.test.ts',
   'tests/core/install/marketplace-defined-plugins.test.ts',
+  'tests/core/install/nested-resource-discovery.test.ts',
   'tests/core/install/package-format-detection.test.ts',
   'tests/core/install/package-marker-detection.test.ts',
   'tests/core/install/package-name-path-migration.test.ts',
@@ -159,6 +160,7 @@ const testFiles: string[] = [
   // Integration
   'tests/integration/cwd-global.test.ts',
   'tests/integration/nested-deps.test.ts',
+  'tests/integration/nested-plugin-skills.test.ts',
   'tests/integration/install-flags.test.ts',
   'tests/integration/conflict-strategies.test.ts',
   'tests/integration/error-handling.test.ts',
@@ -191,4 +193,3 @@ try {
   console.error(String(error));
   process.exitCode = 1;
 }
-

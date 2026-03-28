@@ -56,6 +56,7 @@ const testFiles: string[] = [
   // Core - Platforms
   'tests/core/platforms/platform-extension-filter.test.ts',
   'tests/core/platforms/platform-flows-config.test.ts',
+  'tests/core/platforms/platform-detection.test.ts',
   'tests/core/platforms/dynamic-subdirs.test.ts',
   'tests/core/platforms/yaml-override-merge.test.ts',
   'tests/core/platforms/converter.test.ts',
@@ -159,6 +160,7 @@ const testFiles: string[] = [
 
   // Integration
   'tests/integration/cwd-global.test.ts',
+  'tests/integration/codex-skill-bundle.test.ts',
   'tests/integration/nested-deps.test.ts',
   'tests/integration/nested-plugin-skills.test.ts',
   'tests/integration/install-flags.test.ts',

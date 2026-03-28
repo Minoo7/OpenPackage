@@ -54,7 +54,7 @@
   // Amp
   "amp": {
     "name": "Amp",
-    "detection": [".agents", "AGENTS.md"],
+    "detection": [".amp", ".config/amp/settings.json", ".agents/checks"],
     "export": [
       {
         "from": "skills/**/*",
@@ -648,7 +648,7 @@
 
   "codex": {
     "name": "Codex CLI",
-    "detection": [".codex", "AGENTS.md"],
+    "detection": [".codex", ".agents/skills"],
     "aliases": ["codexcli"],
     "export": [
       {
@@ -657,7 +657,39 @@
       },
       {
         "from": "skills/**/*",
-        "to": ".codex/skills/**/*"
+        "to": ".agents/skills/**/*"
+      },
+      {
+        "from": "SKILL.md",
+        "to": ".agents/skills/{resourceLeaf}/SKILL.md"
+      },
+      {
+        "from": "references/**/*",
+        "to": ".agents/skills/{resourceLeaf}/references/**/*"
+      },
+      {
+        "from": "reference/**/*",
+        "to": ".agents/skills/{resourceLeaf}/references/**/*"
+      },
+      {
+        "from": "scripts/**/*",
+        "to": ".agents/skills/{resourceLeaf}/scripts/**/*"
+      },
+      {
+        "from": "assets/**/*",
+        "to": ".agents/skills/{resourceLeaf}/assets/**/*"
+      },
+      {
+        "from": "agents/**/*",
+        "to": ".agents/skills/{resourceLeaf}/agents/**/*"
+      },
+      {
+        "from": "commands/**/*",
+        "to": ".agents/skills/{resourceLeaf}/commands/**/*"
+      },
+      {
+        "from": ["README.md", "EXAMPLES.md"],
+        "to": ".agents/skills/{resourceLeaf}/references/*"
       },
       {
         "from": ["mcp.jsonc", "mcp.json"],
@@ -735,7 +767,7 @@
         "to": "commands/**/*.md"
       },
       {
-        "from": ".codex/skills/**/*",
+        "from": ".agents/skills/**/*",
         "to": "skills/**/*"
       },
       {
@@ -912,7 +944,7 @@
 
   "cursor": {
     "name": "Cursor",
-    "detection": [".cursor", "AGENTS.md"],
+    "detection": [".cursor"],
     "export": [
       {
         "from": "rules/**/*.md",
@@ -964,7 +996,7 @@
 
   "factory": {
     "name": "Factory AI",
-    "detection": [".factory", "AGENTS.md"],
+    "detection": [".factory"],
     "export": [
       {
         "from": "commands/**/*.md",
@@ -1190,7 +1222,7 @@
 
   "kilo": {
     "name": "Kilo Code",
-    "detection": [".kilocode", "AGENTS.md"],
+    "detection": [".kilocode"],
     "aliases": ["kilocode"],
     "export": [
       {
@@ -1409,7 +1441,7 @@
 
   "opencode": {
     "name": "OpenCode",
-    "detection": [".opencode", "AGENTS.md"],
+    "detection": [".opencode"],
     "export": [
       {
         "from": "commands/**/*.md",
@@ -1761,7 +1793,7 @@
 
   "roo": {
     "name": "Roo Code",
-    "detection": [".roo", "AGENTS.md"],
+    "detection": [".roo"],
     "export": [
       {
         "from": "commands/**/*.md",

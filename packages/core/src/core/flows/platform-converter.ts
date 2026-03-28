@@ -29,6 +29,7 @@ import { isSwitchExpression, resolveSwitchExpression } from './switch-resolver.j
 import { resolveTargetFromGlob } from './flow-execution-coordinator.js';
 import { logger } from '../../utils/logger.js';
 import { ensureDir, writeTextFile, readTextFile } from '../../utils/fs.js';
+import { deriveResourceLeafFromPackageName } from '../../utils/plugin-naming.js';
 import { tmpdir } from 'os';
 import { mkdtemp, rm } from 'fs/promises';
 import { minimatch } from 'minimatch';
@@ -414,6 +415,7 @@ export class PlatformConverter {
       // During conversion, we set:
       // - $$platform = target platform (for conditionals like "$eq": ["$$platform", "claude"])
       // - $$source = original source format (for conditionals like "$eq": ["$$source", "claude-plugin"])
+      const resourceLeaf = deriveResourceLeafFromPackageName(pkg.metadata.name);
       const flowContext: FlowContext = {
         workspaceRoot: outputRoot,  // Write outputs away from inputs
         packageRoot,
@@ -426,7 +428,8 @@ export class PlatformConverter {
           platform: targetPlatform,  // For conditional: "$eq": ["$$platform", "claude"]
           source: context.originalFormat.platform || 'openpackage',  // Use context for $$source
           sourcePlatform: context.originalFormat.platform || 'openpackage',  // Use context for sourcePlatform
-          targetPlatform: targetPlatform
+          targetPlatform: targetPlatform,
+          resourceLeaf
         },
         dryRun
       };

@@ -90,7 +90,7 @@ program
       
       // All commands section - ultra compact
       output += 'All commands:\n\n';
-      output += '    install, uninstall, list,\n';
+      output += '    install, uninstall, list, schema,\n';
       output += '    new, add, remove, move, sync, set,\n';
       output += '    publish, unpublish, search, view,\n';
       output += '    login, logout, config\n\n';
@@ -323,6 +323,18 @@ program
   .action(withErrorHandling(async (...args: any[]) => {
     const { setupViewCommand } = await import('./commands/view.js');
     await setupViewCommand(args);
+  }));
+
+program
+  .command('schema')
+  .argument('[type]', 'resource type (agent, skill, command, rule)')
+  .description('Display resource format schemas and conventions')
+  .option('--platform <platform>', 'platform-specific format (e.g., claude, opencode)')
+  .option('--example', 'show example file')
+  .option('--json', 'output raw JSON Schema')
+  .action(withErrorHandling(async (...args: any[]) => {
+    const { setupSchemaCommand } = await import('./commands/schema.js');
+    await setupSchemaCommand(args);
   }));
 
 // === PUBLISHING COMMANDS ===

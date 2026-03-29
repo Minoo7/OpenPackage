@@ -86,6 +86,7 @@ export interface DetectionSchema {
   title: string;
   description?: string;
   type: string;
+  required?: string[];
   properties?: {
     [key: string]: SchemaProperty;
   };

@@ -35,7 +35,8 @@ function findProjectRoot(): string {
   return join(dirname(fileURLToPath(import.meta.url)), '../../../');
 }
 
-const projectRoot = findProjectRoot();
+/** Project root directory (location of platforms.jsonc and schemas/) */
+export const projectRoot = findProjectRoot();
 const platformsJsoncPath = join(projectRoot, 'platforms.jsonc');
 
 /**

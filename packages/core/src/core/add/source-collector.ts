@@ -53,9 +53,10 @@ export async function collectSourceEntries(resolvedPath: string, cwd: string, in
     // falling to root/skills-dev/agents/reviewer.md.
     const detectedRoot = await detectInputDirectoryPlatform(resolvedPath);
     const effectiveCwd = detectedRoot ?? cwd;
+    const resolvedCwd = realpathSync(effectiveCwd);
 
     for await (const filePath of walkFiles(resolvedPath, [], { excludeDirs: PACKAGE_BOUNDARY_DIRS })) {
-      const entry = deriveSourceEntry(filePath, effectiveCwd, effectiveInputRoot);
+      const entry = deriveSourceEntry(filePath, effectiveCwd, effectiveInputRoot, resolvedCwd);
       if (!entry) {
         throw new Error(`Unsupported file inside directory: ${relative(cwd, filePath)}`);
       }
@@ -65,7 +66,8 @@ export async function collectSourceEntries(resolvedPath: string, cwd: string, in
   }
 
   if (await isFile(resolvedPath)) {
-    const entry = deriveSourceEntry(resolvedPath, cwd, effectiveInputRoot);
+    const resolvedCwd = realpathSync(cwd);
+    const entry = deriveSourceEntry(resolvedPath, cwd, effectiveInputRoot, resolvedCwd);
     if (!entry) {
       throw new Error(`Unsupported file: ${relative(cwd, resolvedPath)}`);
     }
@@ -87,15 +89,15 @@ export async function collectSourceEntries(resolvedPath: string, cwd: string, in
  *
  * @param inputRoot - Original input directory root (for safe relative path computation when file is outside workspace)
  */
-function deriveSourceEntry(absFilePath: string, cwd: string, inputRoot?: string): SourceEntry | null {
+function deriveSourceEntry(absFilePath: string, cwd: string, inputRoot?: string, resolvedCwd?: string): SourceEntry | null {
   // Resolve symlinks to ensure consistent path comparison
   const realFilePath = realpathSync(absFilePath);
-  const realCwd = realpathSync(cwd);
+  const realCwd = resolvedCwd ?? realpathSync(cwd);
   const relativePath = relative(realCwd, realFilePath);
   const normalizedRelPath = normalizePathForProcessing(relativePath);
 
   // 1. Try to map using platform IMPORT flows (workspace → package direction)
-  const mapping = mapWorkspaceFileToUniversal(absFilePath, cwd);
+  const mapping = mapWorkspaceFileToUniversal(absFilePath, cwd, realCwd);
   if (mapping) {
     // Successfully mapped via import flow
     // Construct registry path: subdir/relPath (e.g., "commands/test.md")

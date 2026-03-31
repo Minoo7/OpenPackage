@@ -286,11 +286,12 @@ export function mapPlatformFileToUniversal(
  */
 export function mapWorkspaceFileToUniversal(
   workspaceFilePath: string,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  resolvedCwd?: string
 ): { platform: Platform; subdir: string; relPath: string; flow: Flow } | null {
   // Resolve symlinks to get real paths for consistent comparison
   const absolutePath = realpathSync(workspaceFilePath);
-  const absoluteCwd = realpathSync(cwd);
+  const absoluteCwd = resolvedCwd ?? realpathSync(cwd);
 
   // Convert to workspace-relative path for matching against flow patterns
   const relativePath = relative(absoluteCwd, absolutePath).replace(/\\/g, '/');
@@ -305,8 +306,6 @@ export function mapWorkspaceFileToUniversal(
 
   if (!candidatePath) return null;
 
-  // Scope to owning platform to prevent cross-platform catch-all interference.
-  // For root-level files (no platform prefix), fall back to checking all platforms.
   const dirLookup = getPlatformDirLookup(cwd);
   const owningPlatform = dirLookup[extractFirstComponent(candidatePath) ?? ''];
 
@@ -377,22 +376,30 @@ export function mapWorkspaceFileToUniversal(
  *   → tries: SKILL.md, commits/SKILL.md, skills/commits/SKILL.md,
  *            .claude/skills/commits/SKILL.md  ← matches .claude/skills/**\/*
  */
-function extractPlatformSuffix(absolutePath: string): string | null {
-  const normalized = normalizePathForProcessing(absolutePath);
-  const segments = normalized.split('/').filter(Boolean);
+let cachedNonFallbackFromPatterns: string[] | null = null;
 
-  // Collect all IMPORT from-patterns across all platforms
-  const allFromPatterns: string[] = [];
+function getNonFallbackFromPatterns(): string[] {
+  if (cachedNonFallbackFromPatterns) return cachedNonFallbackFromPatterns;
+  const patterns: string[] = [];
   for (const platform of getAllPlatforms({ includeDisabled: true })) {
     const def = getPlatformDefinition(platform);
     if (!def.import) continue;
     for (const flow of def.import) {
       if (flow.fallback) continue;
       for (const p of extractFromPatternsFromFlow(flow)) {
-        allFromPatterns.push(p);
+        patterns.push(p);
       }
     }
   }
+  cachedNonFallbackFromPatterns = patterns;
+  return patterns;
+}
+
+function extractPlatformSuffix(absolutePath: string): string | null {
+  const normalized = normalizePathForProcessing(absolutePath);
+  const segments = normalized.split('/').filter(Boolean);
+
+  const allFromPatterns = getNonFallbackFromPatterns();
   if (allFromPatterns.length === 0) return null;
 
   // Try suffixes from shortest (just filename) to longer, looking for a match
@@ -411,19 +418,30 @@ function extractPlatformSuffix(absolutePath: string): string | null {
 /**
  * Check if a path matches a flow pattern (supports globs)
  */
+const flowPatternRegexCache = new Map<string, RegExp>();
+
+/** Clear the cached flow-pattern regexes (for test isolation). */
+export function clearFlowPatternCache(): void {
+  flowPatternRegexCache.clear();
+  cachedNonFallbackFromPatterns = null;
+}
+
 function matchesFlowPattern(normalizedPath: string, pattern: string): boolean {
-  // Convert glob pattern to regex
-  let regexPattern = pattern
-    .replace(/\./g, '\\.')
-    .replace(/\*\*\//g, '___DOUBLESTAR_SLASH___')
-    .replace(/\/\*\*/g, '___SLASH_DOUBLESTAR___')
-    .replace(/\*\*/g, '___DOUBLESTAR___')
-    .replace(/\*/g, '[^/]+')
-    .replace(/___DOUBLESTAR_SLASH___/g, '(?:.*?/)?')
-    .replace(/___SLASH_DOUBLESTAR___/g, '(?:/.*)?')
-    .replace(/___DOUBLESTAR___/g, '.*');
-  
-  const regex = new RegExp(`^${regexPattern}$`);
+  let regex = flowPatternRegexCache.get(pattern);
+  if (!regex) {
+    // Convert glob pattern to regex
+    const regexPattern = pattern
+      .replace(/\./g, '\\.')
+      .replace(/\*\*\//g, '___DOUBLESTAR_SLASH___')
+      .replace(/\/\*\*/g, '___SLASH_DOUBLESTAR___')
+      .replace(/\*\*/g, '___DOUBLESTAR___')
+      .replace(/\*/g, '[^/]+')
+      .replace(/___DOUBLESTAR_SLASH___/g, '(?:.*?/)?')
+      .replace(/___SLASH_DOUBLESTAR___/g, '(?:/.*)?')
+      .replace(/___DOUBLESTAR___/g, '.*');
+    regex = new RegExp(`^${regexPattern}$`);
+    flowPatternRegexCache.set(pattern, regex);
+  }
   return regex.test(normalizedPath);
 }
 

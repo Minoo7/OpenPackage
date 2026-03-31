@@ -281,6 +281,12 @@ export function convertSingleFile(
  */
 function findMatchingFlow(filePath: string, flows: Flow[]): Flow | null {
   for (const flow of flows) {
+    // Skip fallback flows - they're catch-alls for unmatched files
+    // and should not be applied to files that are already in universal format
+    if (flow.fallback) {
+      continue;
+    }
+
     const pattern = getPatternFromFlow(flow, 'from');
     
     if (!pattern) {

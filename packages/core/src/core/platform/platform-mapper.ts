@@ -295,8 +295,11 @@ export function mapWorkspaceFileToUniversal(
   // Convert to workspace-relative path for matching against flow patterns
   const relativePath = relative(absoluteCwd, absolutePath).replace(/\\/g, '/');
 
-  // For out-of-workspace files, extract a matchable suffix from the absolute path
-  const candidatePath = relativePath.startsWith('..')
+  // For out-of-workspace files, extract a matchable suffix from the absolute path.
+  // extractPlatformSuffix only matches against non-fallback flows, so we must also
+  // skip fallback flows below to prevent a catch-all from stealing the match.
+  const isOutOfWorkspace = relativePath.startsWith('..');
+  const candidatePath = isOutOfWorkspace
     ? extractPlatformSuffix(absolutePath)
     : relativePath;
 
@@ -316,6 +319,11 @@ export function mapWorkspaceFileToUniversal(
 
     if (definition.import && definition.import.length > 0) {
       for (const flow of definition.import) {
+        // For out-of-workspace files, skip fallback flows. The candidate suffix was
+        // matched by extractPlatformSuffix which excludes fallbacks — allowing them
+        // here lets catch-all patterns (e.g. **/* → root/**/*) from alphabetically
+        // earlier platforms steal the match from the correct non-fallback flow.
+        if (isOutOfWorkspace && flow.fallback) continue;
         // Extract from patterns (handles $switch, array, string, pattern object)
         const fromPatterns = extractFromPatternsFromFlow(flow);
         if (fromPatterns.length === 0) continue;

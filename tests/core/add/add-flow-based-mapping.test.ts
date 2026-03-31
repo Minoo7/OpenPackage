@@ -245,7 +245,7 @@ describe('add flow-based mapping', { concurrency: 1 }, () => {
   });
 
   describe('out-of-workspace absolute paths', { concurrency: 1 }, () => {
-    test('maps external files to root/ with preserved structure', async () => {
+    test('maps external platform files via flow (not root/)', async () => {
       const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'opkg-add-oow-ws-'));
       const external = fs.mkdtempSync(path.join(os.tmpdir(), 'opkg-add-oow-ext-'));
       const originalCwd = process.cwd();
@@ -262,8 +262,11 @@ describe('add flow-based mapping', { concurrency: 1 }, () => {
         assert.ok(result.success, result.error);
         assert.equal(result.data?.filesAdded, 1);
 
-        const expectedPath = path.join(workspace, '.openpackage', 'root', 'skills', 'commits', 'SKILL.md');
+        const expectedPath = path.join(workspace, '.openpackage', 'skills', 'commits', 'SKILL.md');
         assert.ok(fileExists(expectedPath), `Expected file at: ${expectedPath}`);
+
+        const wrongPath = path.join(workspace, '.openpackage', 'root', 'skills', 'commits', 'SKILL.md');
+        assert.ok(!fileExists(wrongPath), `File should not be at root/ path: ${wrongPath}`);
 
         const savedContent = readFile(expectedPath);
         assert.equal(savedContent, '# Commit Skill');
@@ -274,7 +277,7 @@ describe('add flow-based mapping', { concurrency: 1 }, () => {
       }
     });
 
-    test('maps external directory with multiple files to root/', async () => {
+    test('maps external directory with multiple files via flow (not root/)', async () => {
       const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'opkg-add-oow-dir-ws-'));
       const external = fs.mkdtempSync(path.join(os.tmpdir(), 'opkg-add-oow-dir-ext-'));
       const originalCwd = process.cwd();
@@ -292,10 +295,13 @@ describe('add flow-based mapping', { concurrency: 1 }, () => {
         assert.ok(result.success, result.error);
         assert.equal(result.data?.filesAdded, 2);
 
-        const skill = path.join(workspace, '.openpackage', 'root', 'skills', 'commits', 'SKILL.md');
-        const evals = path.join(workspace, '.openpackage', 'root', 'skills', 'commits', 'evals.json');
+        const skill = path.join(workspace, '.openpackage', 'skills', 'commits', 'SKILL.md');
+        const evals = path.join(workspace, '.openpackage', 'skills', 'commits', 'evals.json');
         assert.ok(fileExists(skill), `Expected SKILL.md at: ${skill}`);
         assert.ok(fileExists(evals), `Expected evals.json at: ${evals}`);
+
+        const wrongSkill = path.join(workspace, '.openpackage', 'root', 'skills', 'commits', 'SKILL.md');
+        assert.ok(!fileExists(wrongSkill), `File should not be at root/ path: ${wrongSkill}`);
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(workspace, { recursive: true, force: true });

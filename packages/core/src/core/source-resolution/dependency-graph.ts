@@ -14,6 +14,7 @@ import type { DependencyGraphNode, ResolvedPackageSource } from './types.js';
 interface PackageDependency {
   name: string;
   version?: string;
+  base?: string;
   path?: string;
   git?: string;
   url?: string;
@@ -26,8 +27,12 @@ async function resolveFromManifest(
 ): Promise<ResolvedPackageSource> {
   const normalizedName = normalizePackageName(dep.name);
 
-  if (dep.path) {
-    const resolved = resolveDeclaredPath(dep.path, manifestDir);
+  // Check for local path dependency: base is the modern field (post-migration),
+  // path is the legacy field (pre-migration). Either indicates a local source.
+  if (dep.base || dep.path) {
+    // Prefer base (modern) over path (legacy fallback for old manifests)
+    const pathToResolve = dep.base ?? dep.path!;
+    const resolved = resolveDeclaredPath(pathToResolve, manifestDir);
     const absolutePath = path.join(resolved.absolute, path.sep);
     const mutability = isRegistryPath(absolutePath) ? MUTABILITY.IMMUTABLE : MUTABILITY.MUTABLE;
     const sourceType = isRegistryPath(absolutePath) ? SOURCE_TYPES.REGISTRY : SOURCE_TYPES.PATH;

@@ -77,10 +77,8 @@
           }
         },
         "map": [
-          {
-            "$comment": "Nest under amp.mcpServers key",
-            "$rename": { "mcpServers": "amp.mcpServers" }
-          }
+          // Nest under amp.mcpServers key
+          { "$rename": { "mcpServers": "amp.mcpServers" } }
         ],
         "merge": "deep"
       },
@@ -107,10 +105,8 @@
         },
         "to": "mcp.jsonc",
         "map": [
-          {
-            "$comment": "Extract from amp.mcpServers key",
-            "$rename": { "amp.mcpServers": "mcpServers" }
-          }
+          // Extract from amp.mcpServers key
+          { "$rename": { "amp.mcpServers": "mcpServers" } }
         ]
       },
       { "from": "**/*", "to": "root/**/*", "fallback": true, "comment": "Catch-all: store unmatched workspace files under root/" }
@@ -877,10 +873,8 @@
         "from": ["mcp.jsonc", "mcp.json"],
         "to": "crush.json",
         "map": [
-          {
-            "$comment": "Embed under 'mcp' key",
-            "$rename": { "mcpServers": "mcp" }
-          }
+          // Embed under 'mcp' key
+          { "$rename": { "mcpServers": "mcp" } }
         ],
         "merge": "deep"
       },
@@ -895,10 +889,8 @@
         "from": "crush.json",
         "to": "mcp.jsonc",
         "map": [
-          {
-            "$comment": "Extract from 'mcp' key",
-            "$rename": { "mcp": "mcpServers" }
-          }
+          // Extract from 'mcp' key
+          { "$rename": { "mcp": "mcpServers" } }
         ]
       },
       { "from": "**/*", "to": "root/**/*", "fallback": true, "comment": "Catch-all: store unmatched workspace files under root/" }
@@ -1061,10 +1053,8 @@
           }
         },
         "map": [
-          {
-            "$comment": "Goose uses 'extensions' key instead of 'mcpServers'",
-            "$rename": { "mcpServers": "extensions" }
-          },
+          // Goose uses 'extensions' key instead of 'mcpServers'
+          { "$rename": { "mcpServers": "extensions" } },
           { "$pipe": ["json-to-yaml"] }
         ],
         "merge": "deep"
@@ -1097,10 +1087,8 @@
         "to": "mcp.jsonc",
         "map": [
           { "$pipe": ["yaml-to-json"] },
-          {
-            "$comment": "Extract from 'extensions' key",
-            "$rename": { "extensions": "mcpServers" }
-          }
+          // Extract from 'extensions' key
+          { "$rename": { "extensions": "mcpServers" } }
         ]
       },
       { "from": "**/*", "to": "root/**/*", "fallback": true, "comment": "Catch-all: store unmatched workspace files under root/" }
